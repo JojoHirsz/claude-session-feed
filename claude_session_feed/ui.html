@@ -1,0 +1,228 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Claude Session Feed</title>
+<style>
+  :root {
+    --bg: #0e1014;
+    --card: #161a21;
+    --card-hi: #1c212a;
+    --text: #e8e8e6;
+    --muted: #8a9099;
+    --border: #1f242c;
+    --amber: #d9a441;
+    --red: #d9534f;
+    --accent0: #5eb1ef; --accent1: #7ee0a8; --accent2: #e0a15e;
+    --accent3: #c792ea; --accent4: #ef7e9b; --accent5: #7ee0d0;
+  }
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0; padding: 0; height: 100%; background: var(--bg); color: var(--text);
+    font-family: "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif;
+    font-size: 13px; overflow: hidden;
+  }
+  header {
+    display: flex; align-items: center; gap: 8px; padding: 10px 12px;
+    -webkit-app-region: drag; border-bottom: 1px solid var(--border);
+  }
+  header .title { font-weight: 600; flex: 1; }
+  header button {
+    -webkit-app-region: no-drag; background: none; border: 1px solid #2a303a; color: var(--muted);
+    border-radius: 6px; width: 26px; height: 26px; cursor: pointer; font-size: 13px;
+  }
+  header button.active { color: var(--text); border-color: #3a4250; }
+  #sessions {
+    display: flex; flex-direction: column; gap: 6px; padding: 8px 10px;
+    overflow-y: auto; max-height: 38vh; border-bottom: 1px solid var(--border); flex-shrink: 0;
+  }
+  .chip {
+    display: flex; align-items: center; gap: 8px; background: var(--card); border: 1px solid transparent;
+    border-left: 3px solid #333; border-radius: 8px; padding: 6px 8px; cursor: pointer;
+    text-align: left; color: var(--text); font: inherit; width: 100%;
+  }
+  .chip.active { border-color: #3a4250; background: var(--card-hi); }
+  .chip .dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; background: #5a6070; }
+  .chip.status-busy .dot { background: #5ec26a; }
+  .chip.status-idle .dot { background: #5a6070; }
+  .chip.status-ended .dot { background: transparent; border: 1px solid #5a6070; }
+  .chip-label { font-weight: 600; flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .chip-meta { color: var(--muted); font-size: 11px; white-space: nowrap; }
+  #feed { overflow-y: auto; flex: 1; padding: 8px 10px 24px; }
+  main { display: flex; flex-direction: column; height: calc(100vh - 41px); }
+  .card {
+    background: var(--card); border-radius: 8px; padding: 8px 10px; margin-bottom: 6px;
+    border-left: 3px solid #333; animation: fadein .16s ease-out; cursor: pointer;
+  }
+  @keyframes fadein { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
+  .card-head { display: flex; justify-content: space-between; color: var(--muted); font-size: 11px; margin-bottom: 2px; }
+  .card-title { font-weight: 600; overflow-wrap: anywhere; }
+  .card-body {
+    color: var(--muted); font-family: "Cascadia Code", Consolas, monospace; font-size: 12px;
+    margin-top: 4px; white-space: pre-wrap; max-height: 2.8em; overflow: hidden; overflow-wrap: anywhere;
+  }
+  .card.expanded .card-body { max-height: none; }
+  .card.sess-0 { border-left-color: var(--accent0); } .chip.sess-0 { border-left-color: var(--accent0); }
+  .card.sess-1 { border-left-color: var(--accent1); } .chip.sess-1 { border-left-color: var(--accent1); }
+  .card.sess-2 { border-left-color: var(--accent2); } .chip.sess-2 { border-left-color: var(--accent2); }
+  .card.sess-3 { border-left-color: var(--accent3); } .chip.sess-3 { border-left-color: var(--accent3); }
+  .card.sess-4 { border-left-color: var(--accent4); } .chip.sess-4 { border-left-color: var(--accent4); }
+  .card.sess-5 { border-left-color: var(--accent5); } .chip.sess-5 { border-left-color: var(--accent5); }
+  .card.kind-prompt { background: var(--card-hi); }
+  .card.kind-prompt .card-title { font-weight: 600; }
+  .card.kind-question { box-shadow: inset 0 0 0 1px var(--amber); }
+  .card.state-waiting { animation: fadein .16s ease-out, pulse 2s ease-in-out infinite; }
+  @keyframes pulse {
+    0%, 100% { box-shadow: inset 0 0 0 1px var(--amber); }
+    50% { box-shadow: inset 0 0 0 1px transparent; }
+  }
+  .card.kind-error, .card.state-denied { box-shadow: inset 0 0 0 1px var(--red); }
+  .card.kind-turn_end {
+    background: none; padding: 2px 4px; margin: 2px 0 8px; border-left: none;
+    color: var(--muted); font-size: 11px; cursor: default;
+  }
+  .card.kind-turn_end .card-title { font-weight: 400; }
+  .card.hidden { display: none; }
+  .empty { color: var(--muted); text-align: center; padding: 24px 8px; }
+</style>
+</head>
+<body>
+<header>
+  <span class="title">Claude Session Feed</span>
+  <button id="pin" class="active" title="Keep on top">📌</button>
+  <button id="close" title="Close">✕</button>
+</header>
+<main>
+  <nav id="sessions"></nav>
+  <div id="feed"></div>
+</main>
+<script>
+(function () {
+  let seq = 0;
+  let activeFilter = null;
+  let sessionColor = {};
+  let lastSessions = [];
+  const feed = document.getElementById('feed');
+  const sessionsEl = document.getElementById('sessions');
+
+  const KIND_LABEL = {
+    prompt: 'Prompt', answer: 'Answer', tool: 'Tool', subagent: 'Subagent',
+    question: 'Question', error: 'Error', interrupt: 'Interrupted', model: 'Model',
+    summary: 'Update', wakeup: 'Wakeup', turn_end: '', session_start: 'Session',
+    session_end: 'Session', thinking: 'Thinking',
+  };
+
+  function escapeHtml(s) {
+    return (s == null ? '' : String(s)).replace(/[&<>"']/g, function (c) {
+      return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
+    });
+  }
+
+  function fmtTokens(n) {
+    return (n / 1e6).toLocaleString('en-US', { maximumFractionDigits: 2 }) + 'M left';
+  }
+
+  function renderBlock(b) {
+    const div = document.createElement('div');
+    div.id = 'b-' + b.id;
+    const colorIdx = sessionColor[b.session] || 0;
+    div.className = 'card kind-' + b.kind + ' state-' + (b.state || 'none') + ' sess-' + colorIdx;
+    div.dataset.session = b.session;
+    if (activeFilter && b.session !== activeFilter) div.classList.add('hidden');
+    const label = KIND_LABEL[b.kind] !== undefined ? KIND_LABEL[b.kind] : b.kind;
+    div.innerHTML =
+      '<div class="card-head"><span class="card-kind">' + escapeHtml(label) +
+      '</span><span class="card-time" data-ts="' + escapeHtml(b.ts) + '"></span></div>' +
+      '<div class="card-title">' + escapeHtml(b.title) + '</div>' +
+      (b.body ? '<div class="card-body">' + escapeHtml(b.body) + '</div>' : '');
+    div.addEventListener('click', function () { div.classList.toggle('expanded'); });
+    return div;
+  }
+
+  function upsertBlock(b) {
+    const existing = document.getElementById('b-' + b.id);
+    const fresh = renderBlock(b);
+    if (existing) {
+      existing.replaceWith(fresh);
+    } else {
+      feed.prepend(fresh);
+      while (feed.children.length > 300) feed.removeChild(feed.lastChild);
+    }
+    const empty = feed.querySelector('.empty');
+    if (empty) empty.remove();
+  }
+
+  function renderSessions(sessions) {
+    lastSessions = sessions;
+    sessionColor = {};
+    sessions.forEach(function (s) { sessionColor[s.id] = s.color_index % 6; });
+    sessionsEl.innerHTML = '';
+    sessions.forEach(function (s) {
+      const chip = document.createElement('button');
+      chip.className = 'chip sess-' + (s.color_index % 6) + ' status-' + s.status +
+        (s.id === activeFilter ? ' active' : '');
+      let meta = '';
+      if (s.tokens_left != null) meta += fmtTokens(s.tokens_left);
+      if (s.subagents_running) meta += (meta ? ' · ' : '') + s.subagents_running + ' agent' + (s.subagents_running > 1 ? 's' : '');
+      chip.innerHTML =
+        '<span class="dot"></span><span class="chip-label">' + escapeHtml(s.label) +
+        '</span><span class="chip-meta">' + escapeHtml(meta) + '</span>';
+      chip.addEventListener('click', function () {
+        activeFilter = activeFilter === s.id ? null : s.id;
+        applyFilter();
+        renderSessions(lastSessions);
+      });
+      sessionsEl.appendChild(chip);
+    });
+  }
+
+  function applyFilter() {
+    Array.prototype.forEach.call(feed.children, function (el) {
+      el.classList.toggle('hidden', !!(activeFilter && el.dataset.session !== activeFilter));
+    });
+  }
+
+  function apply(r) {
+    if (!r || r.error) { if (r && r.error) console.error(r.error); return; }
+    seq = r.seq;
+    if (r.sessions) renderSessions(r.sessions);
+    (r.new || []).forEach(upsertBlock);
+    (r.updated || []).forEach(upsertBlock);
+    if (!feed.children.length && !(r.new || []).length) {
+      feed.innerHTML = '<div class="empty">No running Claude Code sessions yet.</div>';
+    }
+  }
+
+  async function loop() {
+    try {
+      const r = await window.pywebview.api.poll(seq);
+      apply(r);
+    } catch (e) { console.error(e); }
+    setTimeout(loop, 700);
+  }
+
+  setInterval(function () {
+    Array.prototype.forEach.call(document.querySelectorAll('.card-time[data-ts]'), function (el) {
+      const ts = el.dataset.ts;
+      if (!ts) return;
+      const diffS = Math.max(0, Math.round((Date.now() - new Date(ts).getTime()) / 1000));
+      el.textContent = diffS < 60 ? diffS + 's' : new Date(ts).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
+    });
+  }, 1000);
+
+  window.addEventListener('pywebviewready', function () {
+    feed.innerHTML = '<div class="empty">No running Claude Code sessions yet.</div>';
+    loop();
+  });
+
+  document.getElementById('pin').addEventListener('click', function () {
+    this.classList.toggle('active');
+    window.pywebview.api.set_on_top(this.classList.contains('active'));
+  });
+  document.getElementById('close').addEventListener('click', function () {
+    window.pywebview.api.quit();
+  });
+})();
+</script>
+</body>
+</html>
