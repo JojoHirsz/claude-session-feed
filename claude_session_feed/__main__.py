@@ -26,6 +26,23 @@ _HWND_NOTOPMOST = -2
 _SWP_NOMOVE = 0x0002
 _SWP_NOSIZE = 0x0001
 _SWP_NOACTIVATE = 0x0010
+_SPI_GETWORKAREA = 0x0030
+
+
+class _Rect(ctypes.Structure):
+    _fields_ = [("left", ctypes.c_long), ("top", ctypes.c_long),
+                ("right", ctypes.c_long), ("bottom", ctypes.c_long)]
+
+
+def _primary_work_area() -> _Rect:
+    """The primary monitor's usable area (screen minus taskbar), via plain ctypes.
+
+    Used instead of pywebview's own `screens` property, which returned
+    inconsistent values between pywebview versions in testing here.
+    """
+    rect = _Rect()
+    ctypes.windll.user32.SystemParametersInfoW(_SPI_GETWORKAREA, 0, ctypes.byref(rect), 0)
+    return rect
 
 
 def _set_topmost(hwnd: int, topmost: bool) -> None:
@@ -78,16 +95,16 @@ class Api:
 def main() -> None:
     monitor = Monitor()
     api = Api(monitor)
-    screen = webview.screens[0]
     width = 390
+    area = _primary_work_area()
     window = webview.create_window(
         "AI Session Buddy",
         str(Path(__file__).with_name("ui.html")),
         js_api=api,
         width=width,
-        height=screen.height - 48,
-        x=screen.width - width,
-        y=0,
+        height=area.bottom - area.top,
+        x=area.right - width,
+        y=area.top,
         frameless=True,
         resizable=True,
         min_size=(320, 480),
