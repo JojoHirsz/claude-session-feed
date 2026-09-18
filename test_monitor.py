@@ -91,6 +91,11 @@ def run():
     assert any(b.kind == "question" and b.state == "answered" for b in blocks), kinds
     assert session.tokens_left == 14912201
     assert session.unknown_types.get("future_thing") == 1, session.unknown_types
+    # turn_duration is the last real event, and nothing waiting/erroring came after
+    # the answered question, so the one-card-per-session summary should read idle —
+    # which, for a still-running process, categorizes as "waiting on the human".
+    assert session.activity_state == "idle", session.activity_state
+    assert session.category() == "waiting", session.category()
 
     # unfinished last line must be buffered, not dropped or crashed on
     with open(tmp, "a", encoding="utf-8") as fh:

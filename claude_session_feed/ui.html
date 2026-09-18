@@ -13,6 +13,8 @@
     --border: #1f242c;
     --amber: #d9a441;
     --red: #d9534f;
+    --green: #5ec26a;
+    --accent-user: #5eb1ef; /* overwritten from the OS accent color once fetched */
     --accent0: #5eb1ef; --accent1: #7ee0a8; --accent2: #e0a15e;
     --accent3: #c792ea; --accent4: #ef7e9b; --accent5: #7ee0d0;
   }
@@ -22,68 +24,81 @@
     font-family: "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif;
     font-size: 13px; overflow: hidden;
   }
+  body { display: flex; flex-direction: column; }
   header {
     display: flex; align-items: center; gap: 8px; padding: 10px 12px;
-    -webkit-app-region: drag; border-bottom: 1px solid var(--border);
+    -webkit-app-region: drag; border-bottom: 1px solid var(--border); flex-shrink: 0;
   }
   header .title { font-weight: 600; flex: 1; }
   header button {
     -webkit-app-region: no-drag; background: none; border: 1px solid #2a303a; color: var(--muted);
     border-radius: 6px; width: 26px; height: 26px; cursor: pointer; font-size: 13px;
   }
-  header button.active { color: var(--text); border-color: #3a4250; }
-  #sessions {
-    display: flex; flex-direction: column; gap: 6px; padding: 8px 10px;
-    overflow-y: auto; max-height: 38vh; border-bottom: 1px solid var(--border); flex-shrink: 0;
+  header button.active { color: var(--text); border-color: var(--accent-user); }
+  #tabs {
+    display: flex; flex-wrap: wrap; gap: 5px; padding: 8px 10px; border-bottom: 1px solid var(--border);
+    flex-shrink: 0;
   }
-  .chip {
-    display: flex; align-items: center; gap: 8px; background: var(--card); border: 1px solid transparent;
-    border-left: 3px solid #333; border-radius: 8px; padding: 6px 8px; cursor: pointer;
-    text-align: left; color: var(--text); font: inherit; width: 100%;
+  .tab {
+    background: none; border: 1px solid transparent; color: var(--muted); font: inherit;
+    border-radius: 6px; padding: 4px 9px; cursor: pointer; white-space: nowrap; display: flex; gap: 5px; align-items: center;
+    flex: 1 1 auto; justify-content: center;
   }
-  .chip.active { border-color: #3a4250; background: var(--card-hi); }
-  .chip .dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; background: #5a6070; }
-  .chip.status-busy .dot { background: #5ec26a; }
-  .chip.status-idle .dot { background: #5a6070; }
-  .chip.status-ended .dot { background: transparent; border: 1px solid #5a6070; }
-  .chip-label { font-weight: 600; flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  .chip-meta { color: var(--muted); font-size: 11px; white-space: nowrap; }
-  #feed { overflow-y: auto; flex: 1; padding: 8px 10px 24px; }
-  main { display: flex; flex-direction: column; height: calc(100vh - 41px); }
-  .card {
-    background: var(--card); border-radius: 8px; padding: 8px 10px; margin-bottom: 6px;
+  .tab .count { color: var(--muted); font-size: 11px; }
+  .tab.active { background: var(--card-hi); color: var(--text); border-color: #2a303a; }
+  .tab.active .dot { box-shadow: 0 0 0 2px var(--accent-user); }
+  main { flex: 1; overflow-y: auto; padding: 8px 10px 24px; }
+  .empty { color: var(--muted); text-align: center; padding: 24px 8px; }
+
+  .agent {
+    background: var(--card); border-radius: 10px; padding: 10px 11px; margin-bottom: 8px;
     border-left: 3px solid #333; animation: fadein .16s ease-out; cursor: pointer;
   }
   @keyframes fadein { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
-  .card-head { display: flex; justify-content: space-between; color: var(--muted); font-size: 11px; margin-bottom: 2px; }
-  .card-title { font-weight: 600; overflow-wrap: anywhere; }
-  .card-body {
-    color: var(--muted); font-family: "Cascadia Code", Consolas, monospace; font-size: 12px;
-    margin-top: 4px; white-space: pre-wrap; max-height: 2.8em; overflow: hidden; overflow-wrap: anywhere;
+  .agent.sess-0 { border-left-color: var(--accent0); }
+  .agent.sess-1 { border-left-color: var(--accent1); }
+  .agent.sess-2 { border-left-color: var(--accent2); }
+  .agent.sess-3 { border-left-color: var(--accent3); }
+  .agent.sess-4 { border-left-color: var(--accent4); }
+  .agent.sess-5 { border-left-color: var(--accent5); }
+
+  .agent-head { display: flex; align-items: center; gap: 7px; margin-bottom: 4px; }
+  .dot { width: 9px; height: 9px; border-radius: 50%; flex-shrink: 0; background: var(--muted); }
+  .agent.state-active .dot { background: var(--green); }
+  .agent.state-waiting .dot { background: var(--amber); animation: pulse 1.8s ease-in-out infinite; }
+  .agent.state-error .dot { background: var(--red); }
+  .agent.state-inactive .dot { background: var(--muted); }
+  @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: .35; } }
+  .agent-label { font-weight: 600; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .agent-meta { color: var(--muted); font-size: 11px; white-space: nowrap; }
+
+  .agent-activity {
+    color: var(--text); font-size: 12.5px; overflow-wrap: anywhere;
+    display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
   }
-  .card.expanded .card-body { max-height: none; }
-  .card.sess-0 { border-left-color: var(--accent0); } .chip.sess-0 { border-left-color: var(--accent0); }
-  .card.sess-1 { border-left-color: var(--accent1); } .chip.sess-1 { border-left-color: var(--accent1); }
-  .card.sess-2 { border-left-color: var(--accent2); } .chip.sess-2 { border-left-color: var(--accent2); }
-  .card.sess-3 { border-left-color: var(--accent3); } .chip.sess-3 { border-left-color: var(--accent3); }
-  .card.sess-4 { border-left-color: var(--accent4); } .chip.sess-4 { border-left-color: var(--accent4); }
-  .card.sess-5 { border-left-color: var(--accent5); } .chip.sess-5 { border-left-color: var(--accent5); }
-  .card.kind-prompt { background: var(--card-hi); }
-  .card.kind-prompt .card-title { font-weight: 600; }
-  .card.kind-question { box-shadow: inset 0 0 0 1px var(--amber); }
-  .card.state-waiting { animation: fadein .16s ease-out, pulse 2s ease-in-out infinite; }
-  @keyframes pulse {
-    0%, 100% { box-shadow: inset 0 0 0 1px var(--amber); }
-    50% { box-shadow: inset 0 0 0 1px transparent; }
+  .agent.expanded .agent-activity { -webkit-line-clamp: unset; }
+  .agent-since { color: var(--muted); font-size: 11px; margin-top: 3px; }
+
+  .subagents { margin-top: 7px; padding-top: 7px; border-top: 1px solid var(--border); }
+  .subagents-summary { color: var(--muted); font-size: 11.5px; display: flex; align-items: center; gap: 5px; }
+  .sub-row {
+    display: flex; gap: 6px; align-items: baseline; font-size: 11.5px; padding: 3px 0 3px 4px;
+    border-left: 2px solid #2a303a; margin-top: 4px;
   }
-  .card.kind-error, .card.state-denied { box-shadow: inset 0 0 0 1px var(--red); }
-  .card.kind-turn_end {
-    background: none; padding: 2px 4px; margin: 2px 0 8px; border-left: none;
-    color: var(--muted); font-size: 11px; cursor: default;
+  .sub-row .dot { width: 6px; height: 6px; }
+  .sub-row.state-running .dot { background: var(--green); }
+  .sub-row.state-done .dot { background: var(--muted); }
+  .sub-row.state-stale .dot { background: var(--amber); }
+  .sub-desc { font-weight: 600; flex-shrink: 0; }
+  .sub-activity { color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+  .history { margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--border); }
+  .history-row {
+    font-size: 11.5px; color: var(--muted); padding: 3px 0; overflow-wrap: anywhere;
+    font-family: "Cascadia Code", Consolas, monospace;
   }
-  .card.kind-turn_end .card-title { font-weight: 400; }
-  .card.hidden { display: none; }
-  .empty { color: var(--muted); text-align: center; padding: 24px 8px; }
+  .history-row b { color: var(--text); font-family: inherit; }
+  .history-empty { color: var(--muted); font-size: 11.5px; font-style: italic; }
 </style>
 </head>
 <body>
@@ -92,25 +107,27 @@
   <button id="pin" class="active" title="Keep on top">📌</button>
   <button id="close" title="Close">✕</button>
 </header>
-<main>
-  <nav id="sessions"></nav>
-  <div id="feed"></div>
-</main>
+<div id="tabs"></div>
+<main id="feed"></main>
 <script>
 (function () {
   let seq = 0;
-  let activeFilter = null;
-  let sessionColor = {};
-  let lastSessions = [];
-  const feed = document.getElementById('feed');
-  const sessionsEl = document.getElementById('sessions');
+  let sessions = [];
+  let activeTab = 'all';
+  const expanded = new Set();
+  const history = {}; // sessionId -> [{ts, kind, title, body}], newest first, capped
+  const HISTORY_CAP = 40;
 
-  const KIND_LABEL = {
-    prompt: 'Prompt', answer: 'Answer', tool: 'Tool', subagent: 'Subagent',
-    question: 'Question', error: 'Error', interrupt: 'Interrupted', model: 'Model',
-    summary: 'Update', wakeup: 'Wakeup', turn_end: '', session_start: 'Session',
-    session_end: 'Session', thinking: 'Thinking',
-  };
+  const feed = document.getElementById('feed');
+  const tabsEl = document.getElementById('tabs');
+
+  const TABS = [
+    { key: 'all', label: 'All' },
+    { key: 'active', label: 'Active' },
+    { key: 'waiting', label: 'Waiting' },
+    { key: 'error', label: 'Error' },
+    { key: 'inactive', label: 'Inactive' },
+  ];
 
   function escapeHtml(s) {
     return (s == null ? '' : String(s)).replace(/[&<>"']/g, function (c) {
@@ -122,75 +139,156 @@
     return (n / 1e6).toLocaleString('en-US', { maximumFractionDigits: 2 }) + 'M left';
   }
 
-  function renderBlock(b) {
-    const div = document.createElement('div');
-    div.id = 'b-' + b.id;
-    const colorIdx = sessionColor[b.session] || 0;
-    div.className = 'card kind-' + b.kind + ' state-' + (b.state || 'none') + ' sess-' + colorIdx;
-    div.dataset.session = b.session;
-    if (activeFilter && b.session !== activeFilter) div.classList.add('hidden');
-    const label = KIND_LABEL[b.kind] !== undefined ? KIND_LABEL[b.kind] : b.kind;
-    div.innerHTML =
-      '<div class="card-head"><span class="card-kind">' + escapeHtml(label) +
-      '</span><span class="card-time" data-ts="' + escapeHtml(b.ts) + '"></span></div>' +
-      '<div class="card-title">' + escapeHtml(b.title) + '</div>' +
-      (b.body ? '<div class="card-body">' + escapeHtml(b.body) + '</div>' : '');
-    div.addEventListener('click', function () { div.classList.toggle('expanded'); });
-    return div;
+  function fmtSince(iso) {
+    if (!iso) return '';
+    const diffS = Math.max(0, Math.round((Date.now() - new Date(iso).getTime()) / 1000));
+    if (diffS < 60) return diffS + 's ago';
+    if (diffS < 3600) return Math.floor(diffS / 60) + 'm ago';
+    if (diffS < 86400) return Math.floor(diffS / 3600) + 'h ago';
+    return Math.floor(diffS / 86400) + 'd ago';
   }
 
-  function upsertBlock(b) {
-    const existing = document.getElementById('b-' + b.id);
-    const fresh = renderBlock(b);
-    if (existing) {
-      existing.replaceWith(fresh);
-    } else {
-      feed.prepend(fresh);
-      while (feed.children.length > 300) feed.removeChild(feed.lastChild);
+  function renderTabs() {
+    const counts = { all: sessions.length, active: 0, waiting: 0, error: 0, inactive: 0 };
+    sessions.forEach(function (s) { counts[s.category] = (counts[s.category] || 0) + 1; });
+    tabsEl.innerHTML = '';
+    TABS.forEach(function (t) {
+      const btn = document.createElement('button');
+      btn.className = 'tab' + (activeTab === t.key ? ' active' : '');
+      btn.innerHTML = '<span class="dot' + (t.key !== 'all' ? ' state-' + t.key : '') + '"></span>' +
+        escapeHtml(t.label) + '<span class="count">' + (counts[t.key] || 0) + '</span>';
+      btn.addEventListener('click', function () { activeTab = t.key; render(); });
+      tabsEl.appendChild(btn);
+    });
+  }
+
+  function renderSubagents(session) {
+    const subs = session.subagents || [];
+    if (!subs.length) return '';
+    const running = subs.filter(function (s) { return s.state === 'running'; }).length;
+    const rows = subs.slice(0, 8).map(function (s) {
+      return '<div class="sub-row state-' + escapeHtml(s.state) + '">' +
+        '<span class="dot"></span>' +
+        '<span class="sub-desc">' + escapeHtml(s.description || 'Subagent') + '</span>' +
+        '<span class="sub-activity">' + escapeHtml(s.last_activity || s.state) + '</span>' +
+        '</div>';
+    }).join('');
+    return '<div class="subagents">' +
+      '<div class="subagents-summary">' + subs.length + ' subagent' + (subs.length > 1 ? 's' : '') +
+      (running ? ' · ' + running + ' running' : '') + '</div>' + rows + '</div>';
+  }
+
+  function renderHistory(session) {
+    const rows = (history[session.id] || []);
+    if (!rows.length) return '<div class="history"><div class="history-empty">No activity yet this session.</div></div>';
+    return '<div class="history">' + rows.slice(0, HISTORY_CAP).map(function (b) {
+      return '<div class="history-row"><b>' + escapeHtml(b.kind) + '</b> ' + escapeHtml(b.title) +
+        (b.body ? ' — ' + escapeHtml(b.body.slice(0, 160)) : '') + '</div>';
+    }).join('') + '</div>';
+  }
+
+  // Every field is written through one of these two, and both skip the DOM write when the
+  // value hasn't actually changed. That's the whole flicker fix: earlier versions replaced
+  // a card's full innerHTML on any change, which tears down and rebuilds every child node
+  // (restarting CSS animations, forcing a repaint) even when e.g. only the activity text
+  // changed. A session with active subagents updates almost every poll tick, so that was
+  // visibly flickering constantly. Now only the specific text/markup that changed is touched.
+  function setText(el, text) {
+    if (el && el.textContent !== text) el.textContent = text;
+  }
+  function setHtml(el, html) {
+    if (el && el.dataset.html !== html) { el.innerHTML = html; el.dataset.html = html; }
+  }
+
+  function buildCardSkeleton(id, onClick) {
+    const card = document.createElement('div');
+    card.id = 'agent-' + id;
+    card.innerHTML =
+      '<div class="agent-head"><span class="dot"></span>' +
+      '<span class="agent-label"></span><span class="agent-meta"></span></div>' +
+      '<div class="agent-activity"></div><div class="agent-since"></div>' +
+      '<div class="agent-subagents"></div><div class="agent-history"></div>';
+    card.addEventListener('click', onClick);
+    return card;
+  }
+
+  function updateCard(card, s) {
+    const className = 'agent state-' + s.category + ' sess-' + (s.color_index % 6) +
+      (expanded.has(s.id) ? ' expanded' : '');
+    if (card.className !== className) card.className = className;
+
+    let meta = '';
+    if (s.model_name) meta += s.model_name;
+    if (s.tokens_left != null) meta += (meta ? ' · ' : '') + fmtTokens(s.tokens_left);
+
+    setText(card.querySelector('.agent-label'), s.label);
+    setText(card.querySelector('.agent-meta'), meta);
+    setText(card.querySelector('.agent-activity'), s.activity);
+    setText(card.querySelector('.agent-since'), fmtSince(s.activity_ts));
+    setHtml(card.querySelector('.agent-subagents'), renderSubagents(s));
+    setHtml(card.querySelector('.agent-history'), expanded.has(s.id) ? renderHistory(s) : '');
+  }
+
+  // Reconciles the DOM against `sessions` instead of rebuilding it: existing cards are
+  // updated field-by-field. Ordering uses a single-cursor walk (insertBefore only when a
+  // card isn't already at the cursor) rather than blindly appendChild-ing every visible
+  // card in order — appendChild-ing all N cards every tick physically detaches and
+  // reattaches every card except the last one, even when the resulting order is unchanged,
+  // which restarts each card's CSS fade-in animation on every single poll. That unconditional
+  // reattach (confirmed via a MutationObserver + animationstart log: all cards fired
+  // animationstart on every ~700ms tick, even with no content change) was the actual flicker
+  // root cause; the innerHTML/textContent diffing added earlier was necessary but not
+  // sufficient, since it never touched this reordering step.
+  function render() {
+    renderTabs();
+    const visible = activeTab === 'all' ? sessions : sessions.filter(function (s) { return s.category === activeTab; });
+    const visibleIds = {};
+    visible.forEach(function (s) { visibleIds[s.id] = true; });
+
+    Array.from(feed.children).forEach(function (el) {
+      if (el.classList.contains('agent') && !visibleIds[el.id.slice('agent-'.length)]) el.remove();
+    });
+
+    if (!visible.length) {
+      feed.innerHTML = '<div class="empty">' +
+        (sessions.length ? 'Nothing in this view.' : 'No running Claude Code sessions yet.') + '</div>';
+      return;
     }
-    const empty = feed.querySelector('.empty');
-    if (empty) empty.remove();
-  }
+    const emptyEl = feed.querySelector('.empty');
+    if (emptyEl) emptyEl.remove();
 
-  function renderSessions(sessions) {
-    lastSessions = sessions;
-    sessionColor = {};
-    sessions.forEach(function (s) { sessionColor[s.id] = s.color_index % 6; });
-    sessionsEl.innerHTML = '';
-    sessions.forEach(function (s) {
-      const chip = document.createElement('button');
-      chip.className = 'chip sess-' + (s.color_index % 6) + ' status-' + s.status +
-        (s.id === activeFilter ? ' active' : '');
-      let meta = '';
-      if (s.tokens_left != null) meta += fmtTokens(s.tokens_left);
-      if (s.subagents_running) meta += (meta ? ' · ' : '') + s.subagents_running + ' agent' + (s.subagents_running > 1 ? 's' : '');
-      chip.innerHTML =
-        '<span class="dot"></span><span class="chip-label">' + escapeHtml(s.label) +
-        '</span><span class="chip-meta">' + escapeHtml(meta) + '</span>';
-      chip.addEventListener('click', function () {
-        activeFilter = activeFilter === s.id ? null : s.id;
-        applyFilter();
-        renderSessions(lastSessions);
-      });
-      sessionsEl.appendChild(chip);
+    let cursor = feed.firstChild;
+    visible.forEach(function (s) {
+      let card = document.getElementById('agent-' + s.id);
+      if (!card) {
+        card = buildCardSkeleton(s.id, function () {
+          if (expanded.has(s.id)) expanded.delete(s.id); else expanded.add(s.id);
+          render();
+        });
+      }
+      updateCard(card, s);
+      if (card === cursor) {
+        cursor = cursor.nextSibling; // already in the right place: zero DOM writes
+      } else {
+        feed.insertBefore(card, cursor); // only this one card actually moves
+      }
     });
   }
 
-  function applyFilter() {
-    Array.prototype.forEach.call(feed.children, function (el) {
-      el.classList.toggle('hidden', !!(activeFilter && el.dataset.session !== activeFilter));
-    });
+  function recordHistory(b) {
+    const list = history[b.session] || (history[b.session] = []);
+    const existingIdx = list.findIndex(function (x) { return x.id === b.id; });
+    if (existingIdx >= 0) list[existingIdx] = b; else list.unshift(b);
+    if (list.length > HISTORY_CAP) list.length = HISTORY_CAP;
   }
 
   function apply(r) {
     if (!r || r.error) { if (r && r.error) console.error(r.error); return; }
     seq = r.seq;
-    if (r.sessions) renderSessions(r.sessions);
-    (r.new || []).forEach(upsertBlock);
-    (r.updated || []).forEach(upsertBlock);
-    if (!feed.children.length && !(r.new || []).length) {
-      feed.innerHTML = '<div class="empty">No running Claude Code sessions yet.</div>';
-    }
+    if (r.sessions) sessions = r.sessions;
+    (r.new || []).forEach(recordHistory);
+    (r.updated || []).forEach(recordHistory);
+    render();
   }
 
   async function loop() {
@@ -202,17 +300,21 @@
   }
 
   setInterval(function () {
-    Array.prototype.forEach.call(document.querySelectorAll('.card-time[data-ts]'), function (el) {
-      const ts = el.dataset.ts;
-      if (!ts) return;
-      const diffS = Math.max(0, Math.round((Date.now() - new Date(ts).getTime()) / 1000));
-      el.textContent = diffS < 60 ? diffS + 's' : new Date(ts).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
+    document.querySelectorAll('.agent').forEach(function (card) {
+      const s = sessions.find(function (x) { return 'agent-' + x.id === card.id; });
+      const since = card.querySelector('.agent-since');
+      if (s && since) since.textContent = fmtSince(s.activity_ts);
     });
   }, 1000);
 
   window.addEventListener('pywebviewready', function () {
     feed.innerHTML = '<div class="empty">No running Claude Code sessions yet.</div>';
     loop();
+    window.pywebview.api.get_theme().then(function (theme) {
+      if (theme && theme.accent) {
+        document.documentElement.style.setProperty('--accent-user', theme.accent);
+      }
+    }).catch(function () {});
   });
 
   document.getElementById('pin').addEventListener('click', function () {

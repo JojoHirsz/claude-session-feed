@@ -65,6 +65,39 @@ def _set_icon(window, png_path: str) -> None:
         logging.getLogger("claude_session_feed").exception("Could not set window icon")
 
 
+def _set_app_id() -> None:
+    """Gives this process its own taskbar identity.
+
+    Without this, Windows groups pythonw.exe-hosted windows under a generic
+    Python taskbar entry/icon (sometimes the interpreter's own icon, not ours),
+    because taskbar grouping keys off the Application User Model ID, which
+    otherwise defaults to the host exe. Must be called before the window exists.
+    """
+    try:
+        ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID("AiSessionBuddy.Widget")
+    except Exception:
+        logging.getLogger("claude_session_feed").exception("Could not set app id")
+
+
+def _accent_color_hex() -> Optional[str]:
+    """The user's Windows accent color, from the registry (undocumented but stable
+    since Win10). Cross-checked here against two independent keys that must
+    decode to the same color if the byte order is right:
+      DWM\\ColorizationColor    — 0xAARRGGBB
+      DWM\\AccentColor          — 0xAABBGGRR
+    """
+    try:
+        import winreg
+        with winreg.OpenKey(winreg.HKEY_CURRENT_USER, r"Software\Microsoft\Windows\DWM") as key:
+            value, _ = winreg.QueryValueEx(key, "ColorizationColor")
+        r = (value >> 16) & 0xFF
+        g = (value >> 8) & 0xFF
+        b = value & 0xFF
+        return f"#{r:02x}{g:02x}{b:02x}"
+    except OSError:
+        return None
+
+
 class Api:
     """Note: attribute names starting with '_' are never walked into pywebview's
     JS-bridge introspection, which matters here — exposing the raw window/handle
@@ -83,6 +116,9 @@ class Api:
         except Exception as exc:  # the feed must never take the window down with it
             return {"error": str(exc)}
 
+    def get_theme(self) -> dict:
+        return {"accent": _accent_color_hex()}
+
     def set_on_top(self, flag: bool) -> None:
         if self._hwnd:
             _set_topmost(self._hwnd, bool(flag))
@@ -93,6 +129,7 @@ class Api:
 
 
 def main() -> None:
+    _set_app_id()
     monitor = Monitor()
     api = Api(monitor)
     width = 390

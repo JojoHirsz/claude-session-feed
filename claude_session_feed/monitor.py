@@ -28,11 +28,11 @@ POLL_MS = 700
 DISCOVERY_EVERY_N_TICKS = 3
 TAIL_BYTES = 2_000_000
 MAX_LINE_BYTES = 8_000_000
-MAX_BLOCKS = 300
+MAX_BLOCKS = 1500
 BODY_MAX = 400
 SHOW_THINKING = False
 SUBAGENT_STALE_S = 120
-ENDED_SESSION_KEEP_MIN = 10
+ENDED_SESSION_KEEP_DAYS = 7
 
 _LOG_DIR = Path(os.environ.get("LOCALAPPDATA", str(Path.home()))) / "ClaudeSessionFeed"
 _LOG_DIR.mkdir(parents=True, exist_ok=True)
@@ -162,6 +162,10 @@ def _now_iso() -> str:
     return time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
 
 
+def _iso(epoch_s: float) -> str:
+    return time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(epoch_s))
+
+
 @dataclass
 class Block:
     id: str
@@ -221,6 +225,28 @@ class Session:
     unknown_types: Counter = field(default_factory=Counter)
     seen_notifications: set = field(default_factory=set)
     ended_at: Optional[float] = None
+    activity: str = "Started"
+    activity_state: str = "active"  # active | waiting | error | idle
+    activity_ts: float = 0.0
+
+    def category(self) -> str:
+        """Coarse bucket the UI filters by.
+
+        'inactive' is reserved for the 7-day archive (process gone). A session whose
+        process is alive but whose turn has finished is always, definitionally, waiting
+        on the human — Claude Code never does anything between turns on its own, and a
+        turn frequently ends with a plain-text question that isn't a structured
+        AskUserQuestion tool call, so there's no reliable signal to tell "finished, nothing
+        needed" apart from "finished, asked something" in the transcript. Treating both as
+        'waiting' matches what the user actually needs to know: is anyone waiting on me.
+        """
+        if self.status == "ended":
+            return "inactive"
+        if self.activity_state == "error":
+            return "error"
+        if self.activity_state == "active":
+            return "active"
+        return "waiting"
 
     def header(self) -> dict:
         return {
@@ -229,7 +255,17 @@ class Session:
             "tokens_left": self.tokens_left, "context_tokens": self.context_tokens,
             "cost_usd": self.cost_usd, "perm_mode": self.perm_mode,
             "status": self.status, "color_index": self.color_index,
-            "subagents_running": sum(1 for s in self.subagents.values() if s.state == "running"),
+            "activity": self.activity, "activity_state": self.activity_state,
+            "activity_ts": _iso(self.activity_ts) if self.activity_ts else None,
+            "category": self.category(),
+            "started_at": _iso(self.started_at) if self.started_at else None,
+            "subagents": [
+                {
+                    "id": s.agent_id, "description": s.description or s.agent_type,
+                    "state": s.state, "last_activity": s.last_activity,
+                }
+                for s in sorted(self.subagents.values(), key=lambda s: s.last_ts, reverse=True)
+            ],
             "unknown": sum(self.unknown_types.values()),
         }
 
@@ -328,6 +364,8 @@ class Monitor:
                             log.exception("classify_sub failed for %s/%s", session.id, sub.agent_id)
             self._mark_stale()
 
+    _CATEGORY_PRIORITY = {"waiting": 0, "error": 1, "active": 2, "inactive": 3}
+
     def drain(self, after_seq: int) -> dict:
         with self.lock:
             new, updated = [], []
@@ -335,9 +373,13 @@ class Monitor:
                 if block.seq <= after_seq:
                     continue
                 (new if block.created_seq > after_seq else updated).append(block.to_dict())
+            sessions = sorted(
+                self.sessions.values(),
+                key=lambda s: (self._CATEGORY_PRIORITY.get(s.category(), 9), -s.activity_ts),
+            )
             return {
                 "seq": self.seq,
-                "sessions": [s.header() for s in sorted(self.sessions.values(), key=lambda s: s.started_at)],
+                "sessions": [s.header() for s in sessions],
                 "new": new,
                 "updated": updated,
             }
@@ -356,6 +398,7 @@ class Monitor:
         self.blocks[bid] = block
         while len(self.blocks) > MAX_BLOCKS:
             self.blocks.popitem(last=False)
+        self._touch_session_activity(session_id, kind, title, block.body, state)
         return block
 
     def _update_block(self, bid, **changes) -> Optional[Block]:
@@ -373,7 +416,36 @@ class Monitor:
                 continue
             setattr(block, k, v)
         block.seq = self._next_seq()
+        self._touch_session_activity(block.session, block.kind, block.title, block.body, block.state)
         return block
+
+    def _touch_session_activity(self, session_id: str, kind: str, title: str, body: str, state: str) -> None:
+        """Rolls every block create/update into the session's one-line 'what it's doing' summary.
+
+        This is what lets the UI show one card per session instead of one per event.
+        """
+        session = self.sessions.get(session_id)
+        if session is None or kind in ("session_start", "session_end"):
+            return
+        text = f"{title} — {body}" if body else title
+        session.activity_ts = time.time()
+
+        if kind == "question":
+            session.activity_state = "waiting" if state == "waiting" else "active"
+            session.activity = text[:140]
+        elif kind == "error" or state in ("error", "denied"):
+            session.activity_state = "error"
+            session.activity = text[:140]
+        elif kind == "interrupt":
+            session.activity_state = "idle"
+            session.activity = text[:140]
+        elif kind == "turn_end":
+            if session.activity_state not in ("waiting", "error"):
+                session.activity_state = "idle"
+        else:
+            if session.activity_state != "waiting":
+                session.activity_state = "active"
+            session.activity = text[:140]
 
     def _discover(self) -> None:
         registry = read_registry()
@@ -383,7 +455,7 @@ class Monitor:
             if session is None:
                 session = Session(id=session_id, cwd=entry.get("cwd", ""),
                                    started_at=(entry.get("startedAt") or 0) / 1000,
-                                   color_index=self._next_color)
+                                   color_index=self._next_color, activity_ts=now)
                 self._next_color += 1
                 self.sessions[session_id] = session
                 transcript = find_transcript(session_id)
@@ -406,7 +478,7 @@ class Monitor:
                 session.status = "ended"
                 session.ended_at = now
                 self._add_block(session_id, "session_end", "Session ended")
-            elif session.ended_at and now - session.ended_at > ENDED_SESSION_KEEP_MIN * 60:
+            elif session.ended_at and now - session.ended_at > ENDED_SESSION_KEEP_DAYS * 86400:
                 del self.sessions[session_id]
 
     def _scan_subagents(self, session: Session) -> None:
