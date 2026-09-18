@@ -1,4 +1,4 @@
-# Claude Session Feed
+# AI Session Buddy
 
 A narrow, always-on-top desktop widget for Windows that shows what your running
 [Claude Code](https://claude.com/claude-code) sessions are doing right now — prompts,

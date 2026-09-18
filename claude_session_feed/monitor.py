@@ -87,7 +87,12 @@ def read_registry() -> dict:
     return out
 
 
+_SESSION_ID_RE = re.compile(r"^[\w-]+$")
+
+
 def find_transcript(session_id: str) -> Optional[Path]:
+    if not _SESSION_ID_RE.match(session_id):
+        return None
     return next(CLAUDE_DIR.glob(f"projects/*/{session_id}.jsonl"), None)
 
 
