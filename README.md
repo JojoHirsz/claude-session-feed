@@ -47,3 +47,7 @@ come out the other end — no live session required.
 - Ended sessions stay visible for 10 minutes, then drop out of the feed.
 - Waiting permission prompts are invisible in the transcript, so a tool card just says
   "running for Ns" without knowing whether it's actually blocked on you.
+
+## License
+
+[MIT](LICENSE)

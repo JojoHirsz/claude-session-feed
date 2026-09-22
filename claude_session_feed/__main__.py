@@ -45,11 +45,33 @@ def _primary_work_area() -> _Rect:
     return rect
 
 
+# Without explicit argtypes, ctypes marshals bare Python ints as 32-bit c_int. hWndInsertAfter
+# (-1/-2 for HWND_TOPMOST/HWND_NOTOPMOST) then arrives corrupted on 64-bit Windows instead of
+# sign-extended to a full pointer, so SetWindowPos silently failed (GetLastError 1400,
+# ERROR_INVALID_WINDOW_HANDLE) on every call, including the very first one in on_shown — the
+# window was never actually topmost, no matter what the pin button did. Confirmed by calling it
+# both ways against the live window's real HWND: without argtypes ret=0/err=1400, with them
+# ret=1 and GetWindowLongPtr(GWL_EXSTYLE) actually shows WS_EX_TOPMOST set afterwards.
+#
+# This must be its own bound prototype, NOT `ctypes.windll.user32.SetWindowPos.argtypes = [...]`:
+# that attribute access returns a function object ctypes caches per-DLL-per-name and shares
+# across the whole process. Setting argtypes on it broke pywebview's own internal window-move
+# (winforms.py BrowserForm.move(), used for header dragging), which calls the very same shared
+# SetWindowPos with None for the unused width/height args — fine with no argtypes declared, but
+# a TypeError/ArgumentError once we forced c_int there. That exception is raised on a background
+# dispatch thread with no console attached (pythonw), so it never surfaces anywhere: dragging
+# just silently stopped working. Confirmed by reproducing pywebview's exact call shape after
+# setting argtypes on the shared object (raises ArgumentError) vs. after removing them (works).
+_set_window_pos = ctypes.WINFUNCTYPE(
+    ctypes.c_int, ctypes.c_void_p, ctypes.c_void_p,
+    ctypes.c_int, ctypes.c_int, ctypes.c_int, ctypes.c_int, ctypes.c_uint,
+)(("SetWindowPos", ctypes.windll.user32))
+
+
 def _set_topmost(hwnd: int, topmost: bool) -> None:
-    ctypes.windll.user32.SetWindowPos(
-        hwnd, _HWND_TOPMOST if topmost else _HWND_NOTOPMOST,
-        0, 0, 0, 0, _SWP_NOMOVE | _SWP_NOSIZE | _SWP_NOACTIVATE,
-    )
+    insert_after = ctypes.c_void_p(_HWND_TOPMOST if topmost else _HWND_NOTOPMOST)
+    _set_window_pos(ctypes.c_void_p(hwnd), insert_after, 0, 0, 0, 0,
+                     _SWP_NOMOVE | _SWP_NOSIZE | _SWP_NOACTIVATE)
 
 
 def _set_icon(window, png_path: str) -> None:
@@ -98,6 +120,169 @@ def _accent_color_hex() -> Optional[str]:
         return None
 
 
+class _ProcessEntry32W(ctypes.Structure):
+    _fields_ = [
+        ("dwSize", ctypes.c_uint32), ("cntUsage", ctypes.c_uint32),
+        ("th32ProcessID", ctypes.c_uint32), ("th32DefaultHeapID", ctypes.c_size_t),
+        ("th32ModuleID", ctypes.c_uint32), ("cntThreads", ctypes.c_uint32),
+        ("th32ParentProcessID", ctypes.c_uint32), ("pcPriClassBase", ctypes.c_long),
+        ("dwFlags", ctypes.c_uint32), ("szExeFile", ctypes.c_wchar * 260),
+    ]
+
+
+def _process_parents() -> dict:
+    """pid -> parent pid, for every running process (Toolhelp snapshot)."""
+    kernel32 = ctypes.windll.kernel32
+    TH32CS_SNAPPROCESS = 0x00000002
+    snapshot = kernel32.CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0)
+    if not snapshot:
+        return {}
+    try:
+        entry = _ProcessEntry32W()
+        entry.dwSize = ctypes.sizeof(_ProcessEntry32W)
+        out = {}
+        if not kernel32.Process32FirstW(snapshot, ctypes.byref(entry)):
+            return out
+        while True:
+            out[entry.th32ProcessID] = entry.th32ParentProcessID
+            if not kernel32.Process32NextW(snapshot, ctypes.byref(entry)):
+                break
+        return out
+    finally:
+        kernel32.CloseHandle(snapshot)
+
+
+def _window_for_pid(pid: int) -> int:
+    """First visible top-level window owned by this exact process, or 0."""
+    user32 = ctypes.windll.user32
+    found = []
+
+    @ctypes.WINFUNCTYPE(ctypes.c_bool, ctypes.c_void_p, ctypes.c_void_p)
+    def callback(hwnd, _lparam):
+        owner_pid = ctypes.c_uint32()
+        user32.GetWindowThreadProcessId(hwnd, ctypes.byref(owner_pid))
+        if owner_pid.value == pid and user32.IsWindowVisible(hwnd) and not user32.GetWindow(hwnd, 4):
+            found.append(hwnd)
+            return False
+        return True
+
+    user32.EnumWindows(callback, 0)
+    return found[0] if found else 0
+
+
+def _window_by_title_substring(text: str, exclude_hwnd: int = 0) -> int:
+    """First visible top-level window whose title contains `text` (case-insensitive).
+
+    `exclude_hwnd` skips our own widget window. Without it this can match the widget
+    itself: its title is "AI Session Buddy", which contains any session labeled
+    e.g. "Session Buddy" as a substring — confirmed live as the actual cause of
+    "jumping" to a same/similar-named session silently doing nothing (it was
+    foregrounding the widget onto itself, a no-op since it's already visible/topmost).
+    """
+    user32 = ctypes.windll.user32
+    found = []
+    needle = text.lower()
+
+    @ctypes.WINFUNCTYPE(ctypes.c_bool, ctypes.c_void_p, ctypes.c_void_p)
+    def callback(hwnd, _lparam):
+        if hwnd == exclude_hwnd or not user32.IsWindowVisible(hwnd) or user32.GetWindow(hwnd, 4):
+            return True
+        length = user32.GetWindowTextLengthW(hwnd)
+        if not length:
+            return True
+        buf = ctypes.create_unicode_buffer(length + 1)
+        user32.GetWindowTextW(hwnd, buf, length + 1)
+        if needle in buf.value.lower():
+            found.append(hwnd)
+            return False
+        return True
+
+    user32.EnumWindows(callback, 0)
+    return found[0] if found else 0
+
+
+def _foreground(hwnd: int) -> None:
+    kernel32 = ctypes.windll.kernel32
+    user32 = ctypes.windll.user32
+    if user32.IsIconic(hwnd):
+        user32.ShowWindow(hwnd, 9)  # SW_RESTORE
+    fg_hwnd = user32.GetForegroundWindow()
+    fg_thread = user32.GetWindowThreadProcessId(fg_hwnd, None)
+    cur_thread = kernel32.GetCurrentThreadId()
+    user32.AttachThreadInput(cur_thread, fg_thread, True)
+    user32.SetForegroundWindow(hwnd)
+    user32.BringWindowToTop(hwnd)
+    user32.AttachThreadInput(cur_thread, fg_thread, False)
+
+
+def _jump_to_pid(pid: int, label: str = "", own_hwnd: int = 0) -> None:
+    """Brings the terminal window hosting a Claude Code process to the foreground.
+
+    The pid from the session registry is the CLI process itself, which has no window
+    of its own. In rough order of reliability:
+    - Claude Code sets the terminal's title to the session's own AI-generated label
+      (confirmed live: a session named "ERNTER" shows up as a window titled
+      "✳ ERNTER"). If we know the label, matching the window title directly skips
+      process-tree guessing entirely and is exact.
+    - Before naming happens, Claude Code sets the same title to the literal
+      placeholder "Claude Code" instead (confirmed live: a freshly opened, still
+      unnamed session shows up as "✳ Claude Code"). Try that when there's no label
+      yet. Ambiguous if more than one session is unnamed at once — picks whichever
+      matching window EnumWindows finds first.
+    - Walk up the process tree to the first ancestor that owns a visible top-level
+      window (covers GUI terminal emulators like Git Bash's mintty, which has no
+      real Win32 console at all). NOTE: confirmed unreliable in practice — the
+      intermediate ancestor between a Git-Bash-spawned process and mintty.exe is
+      commonly already dead by the time we look (Windows' ParentProcessID is a
+      creation-time snapshot, not a maintained live link), which silently breaks
+      this walk. Kept only as a fallback for setups where it does hold.
+    - AttachConsole for classic consoles (cmd.exe/PowerShell in conhost). Also
+      confirmed to find a real but *hidden* console window when the actual terminal
+      is mintty (Windows auto-allocates one for native console-subsystem children
+      like node.exe even under a pty-less Cygwin shell) — foregrounding it is a
+      silent no-op the user never sees, which is why this must not be tried first.
+    """
+    kernel32 = ctypes.windll.kernel32
+
+    hwnd = (_window_by_title_substring(label, own_hwnd) if label
+            else _window_by_title_substring("Claude Code", own_hwnd))
+    if hwnd:
+        _foreground(hwnd)
+        return
+
+    parents = _process_parents()
+    walk_pid, seen = pid, set()
+    while walk_pid and walk_pid not in seen:
+        seen.add(walk_pid)
+        hwnd = _window_for_pid(walk_pid)
+        if hwnd:
+            _foreground(hwnd)
+            return
+        walk_pid = parents.get(walk_pid, 0)
+
+    kernel32.FreeConsole()
+    if not kernel32.AttachConsole(pid):
+        return
+    hwnd = kernel32.GetConsoleWindow()
+    kernel32.FreeConsole()
+    if hwnd:
+        _foreground(hwnd)
+
+
+def _light_mode() -> bool:
+    """Whether Windows apps are set to light mode (Settings > Colors > Choose your mode)."""
+    try:
+        import winreg
+        with winreg.OpenKey(
+            winreg.HKEY_CURRENT_USER,
+            r"Software\Microsoft\Windows\CurrentVersion\Themes\Personalize",
+        ) as key:
+            value, _ = winreg.QueryValueEx(key, "AppsUseLightTheme")
+        return bool(value)
+    except OSError:
+        return False
+
+
 class Api:
     """Note: attribute names starting with '_' are never walked into pywebview's
     JS-bridge introspection, which matters here — exposing the raw window/handle
@@ -108,6 +293,7 @@ class Api:
         self._monitor = monitor
         self._window = None
         self._hwnd: Optional[int] = None
+        self._on_top = True
 
     def poll(self, after_seq: int = 0) -> dict:
         try:
@@ -117,11 +303,56 @@ class Api:
             return {"error": str(exc)}
 
     def get_theme(self) -> dict:
-        return {"accent": _accent_color_hex()}
+        return {"accent": _accent_color_hex(), "light": _light_mode()}
 
     def set_on_top(self, flag: bool) -> None:
-        if self._hwnd:
-            _set_topmost(self._hwnd, bool(flag))
+        self._on_top = bool(flag)
+        try:
+            if self._hwnd:
+                _set_topmost(self._hwnd, self._on_top)
+        except Exception:
+            logging.getLogger("claude_session_feed").exception("set_on_top failed")
+
+    def reassert_on_top(self) -> None:
+        """WinForms can silently drop the native topmost style across a minimize/maximize/
+        restore cycle without updating anything we track — reapply our last known desired
+        state. Called from the restored/maximized window events (see main())."""
+        if self._hwnd and self._on_top:
+            _set_topmost(self._hwnd, True)
+
+    def jump_to_session(self, pid: int) -> None:
+        try:
+            pid = int(pid)
+            label = ""
+            for session in self._monitor.sessions.values():
+                if session.pid == pid:
+                    label = session.label
+                    break
+            _jump_to_pid(pid, label, own_hwnd=self._hwnd or 0)
+        except Exception:
+            logging.getLogger("claude_session_feed").exception("jump_to_session failed for pid %s", pid)
+
+    def minimize(self) -> None:
+        if self._window:
+            self._window.minimize()
+
+    def toggle_maximize(self) -> None:
+        if not self._window:
+            return
+        self._maximized = not getattr(self, "_maximized", False)
+        if self._maximized:
+            self._window.maximize()
+        else:
+            self._window.restore()
+
+    def resize_width(self, width: int) -> None:
+        """Resizes by dragging the left edge, keeping the top-right corner fixed
+        (the window stays docked to the right screen edge)."""
+        if not self._window:
+            return
+        from webview.window import FixPoint
+
+        self._window.resize(max(320, int(width)), self._window.height, FixPoint.NORTH | FixPoint.EAST)
 
     def quit(self) -> None:
         if self._window:
@@ -129,6 +360,7 @@ class Api:
 
 
 def main() -> None:
+    logging.basicConfig(level=logging.DEBUG, format="%(asctime)s %(name)s %(message)s")
     _set_app_id()
     monitor = Monitor()
     api = Api(monitor)
@@ -154,6 +386,8 @@ def main() -> None:
         _set_icon(window, str(Path(__file__).with_name("icon.png")))
 
     window.events.shown += on_shown
+    window.events.restored += lambda *_: api.reassert_on_top()
+    window.events.maximized += lambda *_: api.reassert_on_top()
     webview.start(gui="edgechromium", debug=False)
 
 

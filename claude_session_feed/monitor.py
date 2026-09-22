@@ -204,6 +204,7 @@ class Subagent:
 @dataclass
 class Session:
     id: str
+    pid: int = 0
     cwd: str = ""
     label: str = ""
     model: str = ""
@@ -244,13 +245,19 @@ class Session:
             return "inactive"
         if self.activity_state == "error":
             return "error"
+        # Claude Code's own registry entry (busy/idle) is authoritative for whether a turn
+        # is actually running; it catches cases our transcript-event guess gets wrong (see
+        # activity_state below), except an explicit AskUserQuestion ("waiting"), which
+        # should show even if the process still reports busy while blocked on it.
+        if self.activity_state == "waiting" or self.status == "idle":
+            return "waiting"
         if self.activity_state == "active":
             return "active"
         return "waiting"
 
     def header(self) -> dict:
         return {
-            "id": self.id, "label": self.label or self.id[:8], "cwd": self.cwd,
+            "id": self.id, "pid": self.pid, "label": self.label or self.id[:8], "cwd": self.cwd,
             "model": self.model, "model_name": self.model_name,
             "tokens_left": self.tokens_left, "context_tokens": self.context_tokens,
             "cost_usd": self.cost_usd, "perm_mode": self.perm_mode,
@@ -364,7 +371,7 @@ class Monitor:
                             log.exception("classify_sub failed for %s/%s", session.id, sub.agent_id)
             self._mark_stale()
 
-    _CATEGORY_PRIORITY = {"waiting": 0, "error": 1, "active": 2, "inactive": 3}
+    _CATEGORY_PRIORITY = {"active": 0, "error": 1, "waiting": 2, "inactive": 3}
 
     def drain(self, after_seq: int) -> dict:
         with self.lock:
@@ -469,6 +476,7 @@ class Monitor:
             reg_status = entry.get("status")
             if reg_status:
                 session.status = reg_status
+            session.pid = entry.get("pid") or session.pid
             self._scan_subagents(session)
 
         for session_id, session in list(self.sessions.items()):

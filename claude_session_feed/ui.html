@@ -18,6 +18,10 @@
     --accent0: #5eb1ef; --accent1: #7ee0a8; --accent2: #e0a15e;
     --accent3: #c792ea; --accent4: #ef7e9b; --accent5: #7ee0d0;
   }
+  html[data-theme="light"] {
+    --bg: #f5f6f8; --card: #ffffff; --card-hi: #eceef2;
+    --text: #1b1f24; --muted: #6b7280; --border: #e1e4ea;
+  }
   * { box-sizing: border-box; }
   html, body {
     margin: 0; padding: 0; height: 100%; background: var(--bg); color: var(--text);
@@ -27,14 +31,33 @@
   body { display: flex; flex-direction: column; }
   header {
     display: flex; align-items: center; gap: 8px; padding: 10px 12px;
-    -webkit-app-region: drag; border-bottom: 1px solid var(--border); flex-shrink: 0;
+    border-bottom: 1px solid var(--border); flex-shrink: 0;
   }
+  header .logo { height: 1.3em; display: block; }
   header .title { font-weight: 600; flex: 1; }
   header button {
-    -webkit-app-region: no-drag; background: none; border: 1px solid #2a303a; color: var(--muted);
+    background: none; border: 1px solid #2a303a; color: var(--muted);
     border-radius: 6px; width: 26px; height: 26px; cursor: pointer; font-size: 13px;
   }
   header button.active { color: var(--text); border-color: var(--accent-user); }
+  #theme-menu { position: relative; }
+  #theme-dropdown {
+    display: none; position: absolute; top: 32px; right: 0; z-index: 20;
+    background: var(--card); border: 1px solid var(--border); border-radius: 8px;
+    padding: 4px; min-width: 150px; box-shadow: 0 4px 16px rgba(0,0,0,.25);
+  }
+  #theme-dropdown.open { display: block; }
+  #theme-dropdown button {
+    display: flex; align-items: center; gap: 7px; width: 100%; height: auto;
+    border: none; background: none; color: var(--text); font: inherit; text-align: left;
+    padding: 7px 8px; border-radius: 6px; cursor: pointer;
+  }
+  #theme-dropdown button:hover { background: var(--card-hi); }
+  #theme-dropdown button .check { width: 14px; color: var(--accent-user); }
+  #resize-left {
+    position: fixed; left: 0; top: 0; width: 6px; height: 100%; cursor: ew-resize;
+    -webkit-app-region: no-drag; z-index: 10;
+  }
   #tabs {
     display: flex; flex-wrap: wrap; gap: 5px; padding: 8px 10px; border-bottom: 1px solid var(--border);
     flex-shrink: 0;
@@ -102,9 +125,21 @@
 </style>
 </head>
 <body>
+<div id="resize-left"></div>
 <header>
-  <span class="title">AI Session Buddy</span>
-  <button id="pin" class="active" title="Keep on top">📌</button>
+  <img class="logo" src="icon.png" alt="">
+  <span class="title pywebview-drag-region">AI Session Buddy</span>
+  <button id="pin" class="active" title="Pinned: always on top (click to unpin)">🔒</button>
+  <div id="theme-menu">
+    <button id="theme-btn" title="Color theme">🎨</button>
+    <div id="theme-dropdown">
+      <button data-theme-choice="system"><span class="check"></span>System (Windows folgen)</button>
+      <button data-theme-choice="dark"><span class="check"></span>Dunkel</button>
+      <button data-theme-choice="light"><span class="check"></span>Hell</button>
+    </div>
+  </div>
+  <button id="minimize" title="Minimize">🗕</button>
+  <button id="maximize" title="Maximize">🗖</button>
   <button id="close" title="Close">✕</button>
 </header>
 <div id="tabs"></div>
@@ -203,12 +238,25 @@
   function buildCardSkeleton(id, onClick) {
     const card = document.createElement('div');
     card.id = 'agent-' + id;
+    card.title = 'Double-click to jump to this session\'s terminal window';
     card.innerHTML =
       '<div class="agent-head"><span class="dot"></span>' +
       '<span class="agent-label"></span><span class="agent-meta"></span></div>' +
       '<div class="agent-activity"></div><div class="agent-since"></div>' +
       '<div class="agent-subagents"></div><div class="agent-history"></div>';
-    card.addEventListener('click', onClick);
+    // A double-click also fires two ordinary 'click' events first (browser behavior), which
+    // would toggle expand/collapse open-then-shut before dblclick even runs. Delay the single
+    // click just long enough to cancel it if a second click follows.
+    let clickTimer = null;
+    card.addEventListener('click', function (e) {
+      if (clickTimer) { clearTimeout(clickTimer); clickTimer = null; return; }
+      clickTimer = setTimeout(function () { clickTimer = null; onClick(e); }, 250);
+    });
+    card.addEventListener('dblclick', function () {
+      if (clickTimer) { clearTimeout(clickTimer); clickTimer = null; }
+      const cur = sessions.find(function (x) { return x.id === id; });
+      if (cur && cur.pid) window.pywebview.api.jump_to_session(cur.pid);
+    });
     return card;
   }
 
@@ -307,23 +355,88 @@
     });
   }, 1000);
 
+  // Theme: 'system' follows the Windows light/dark setting fetched from get_theme(),
+  // 'dark'/'light' pin it regardless. Choice persists locally across restarts.
+  let systemIsLight = false;
+  function applyTheme(choice) {
+    const light = choice === 'system' ? systemIsLight : choice === 'light';
+    document.documentElement.dataset.theme = light ? 'light' : 'dark';
+    document.querySelectorAll('#theme-dropdown button').forEach(function (b) {
+      b.querySelector('.check').textContent = b.dataset.themeChoice === choice ? '✓' : '';
+    });
+  }
+  function currentThemeChoice() {
+    try { return localStorage.getItem('sessionBuddyTheme') || 'system'; } catch (e) { return 'system'; }
+  }
+  function setThemeChoice(choice) {
+    try { localStorage.setItem('sessionBuddyTheme', choice); } catch (e) {}
+    applyTheme(choice);
+  }
+
   window.addEventListener('pywebviewready', function () {
     feed.innerHTML = '<div class="empty">No running Claude Code sessions yet.</div>';
     loop();
     window.pywebview.api.get_theme().then(function (theme) {
-      if (theme && theme.accent) {
-        document.documentElement.style.setProperty('--accent-user', theme.accent);
-      }
+      if (!theme) return;
+      if (theme.accent) document.documentElement.style.setProperty('--accent-user', theme.accent);
+      systemIsLight = !!theme.light;
+      applyTheme(currentThemeChoice());
     }).catch(function () {});
+  });
+
+  document.getElementById('theme-btn').addEventListener('click', function (e) {
+    e.stopPropagation();
+    document.getElementById('theme-dropdown').classList.toggle('open');
+  });
+  document.querySelectorAll('#theme-dropdown button').forEach(function (b) {
+    b.addEventListener('click', function () {
+      setThemeChoice(b.dataset.themeChoice);
+      document.getElementById('theme-dropdown').classList.remove('open');
+    });
+  });
+  window.addEventListener('click', function () {
+    document.getElementById('theme-dropdown').classList.remove('open');
   });
 
   document.getElementById('pin').addEventListener('click', function () {
     this.classList.toggle('active');
-    window.pywebview.api.set_on_top(this.classList.contains('active'));
+    const onTop = this.classList.contains('active');
+    this.textContent = onTop ? '🔒' : '🔓';
+    this.title = onTop ? 'Pinned: always on top (click to unpin)' : 'Not pinned: can be covered (click to pin)';
+    window.pywebview.api.set_on_top(onTop);
+  });
+  document.getElementById('minimize').addEventListener('click', function () {
+    window.pywebview.api.minimize();
+  });
+  document.getElementById('maximize').addEventListener('click', function () {
+    this.textContent = this.textContent === '🗖' ? '🗗' : '🗖';
+    window.pywebview.api.toggle_maximize();
   });
   document.getElementById('close').addEventListener('click', function () {
     window.pywebview.api.quit();
   });
+
+  // Left-edge drag resize: the window is docked to the right screen edge, so growing it
+  // should extend leftward (resize_width keeps the top-right corner fixed) rather than
+  // the usual top-left-fixed default.
+  (function () {
+    const handle = document.getElementById('resize-left');
+    let dragging = false, startX = 0, startWidth = 0, pending = false;
+    handle.addEventListener('mousedown', function (e) {
+      dragging = true; startX = e.screenX; startWidth = document.documentElement.clientWidth;
+      e.preventDefault();
+    });
+    window.addEventListener('mousemove', function (e) {
+      if (!dragging || pending) return;
+      pending = true;
+      requestAnimationFrame(function () {
+        pending = false;
+        if (!dragging) return;
+        window.pywebview.api.resize_width(startWidth + (startX - e.screenX));
+      });
+    });
+    window.addEventListener('mouseup', function () { dragging = false; });
+  })();
 })();
 </script>
 </body>
