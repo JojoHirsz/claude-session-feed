@@ -17,6 +17,7 @@ is defensive on purpose (see `monitor.py`), and expect drift across Claude Code 
 
 - Windows, Python 3.11+
 - The Microsoft Edge WebView2 runtime (already installed on current Windows 10/11)
+- ~250 MB RAM (WebView2 window, comparable to 2–3 browser tabs)
 
 ## Setup
 
