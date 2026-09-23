@@ -34,15 +34,17 @@
     border-bottom: 1px solid var(--border); flex-shrink: 0;
   }
   header .logo { height: 26px; display: block; }
+  header .logo-btn { background: none; border: none; padding: 0; cursor: pointer; }
   header .title { font-weight: 600; flex: 1; align-self: stretch; }
   header button {
-    background: none; border: 1px solid #2a303a; color: var(--muted);
+    background: none; border: none; color: var(--muted);
     border-radius: 6px; width: 26px; height: 26px; cursor: pointer; font-size: 13px;
   }
-  header button.active { color: var(--text); border-color: var(--accent-user); }
+  header button:hover { background: var(--card-hi); }
+  header button.active { color: var(--text); background: var(--card-hi); }
   #theme-menu { position: relative; }
   #theme-dropdown {
-    display: none; position: absolute; top: 32px; right: 0; z-index: 20;
+    display: none; position: absolute; top: 32px; left: 0; z-index: 20;
     background: var(--card); border: 1px solid var(--border); border-radius: 8px;
     padding: 4px; min-width: 150px; box-shadow: 0 4px 16px rgba(0,0,0,.25);
   }
@@ -130,17 +132,16 @@
 <body>
 <div id="resize-left"></div>
 <header>
-  <img class="logo" src="icon.png" alt="">
-  <span class="title pywebview-drag-region"></span>
-  <button id="pin" class="active" title="Pinned: always on top (click to unpin)">🔒</button>
   <div id="theme-menu">
-    <button id="theme-btn" title="Color theme">🎨</button>
+    <button id="logo-btn" class="logo-btn" title="Color theme"><img class="logo" src="icon.png" alt=""></button>
     <div id="theme-dropdown">
       <button data-theme-choice="system"><span class="check"></span>System (Windows folgen)</button>
       <button data-theme-choice="dark"><span class="check"></span>Dunkel</button>
       <button data-theme-choice="light"><span class="check"></span>Hell</button>
     </div>
   </div>
+  <span class="title pywebview-drag-region"></span>
+  <button id="pin" class="active" title="Pinned: always on top (click to unpin)">🔒</button>
   <button id="minimize" title="Minimize">🗕</button>
   <button id="maximize" title="Maximize">🗖</button>
   <button id="close" title="Close">✕</button>
@@ -387,7 +388,7 @@
     }).catch(function () {});
   });
 
-  document.getElementById('theme-btn').addEventListener('click', function (e) {
+  document.getElementById('logo-btn').addEventListener('click', function (e) {
     e.stopPropagation();
     document.getElementById('theme-dropdown').classList.toggle('open');
   });
