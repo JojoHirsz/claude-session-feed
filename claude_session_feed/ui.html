@@ -91,6 +91,9 @@
   .agent.state-waiting .dot { background: var(--amber); animation: pulse 1.8s ease-in-out infinite; }
   .agent.state-error .dot { background: var(--red); }
   .agent.state-inactive .dot { background: var(--muted); }
+  #tabs .dot.state-active { background: var(--green); }
+  #tabs .dot.state-waiting { background: var(--amber); }
+  #tabs .dot.state-error { background: var(--red); }
   @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: .35; } }
   .agent-label { font-weight: 600; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .agent-meta { color: var(--muted); font-size: 11px; white-space: nowrap; }
@@ -190,7 +193,7 @@
     TABS.forEach(function (t) {
       const btn = document.createElement('button');
       btn.className = 'tab' + (activeTab === t.key ? ' active' : '');
-      btn.innerHTML = '<span class="dot' + (t.key !== 'all' ? ' state-' + t.key : '') + '"></span>' +
+      btn.innerHTML = '<span class="dot' + (t.key !== 'all' && counts[t.key] > 0 ? ' state-' + t.key : '') + '"></span>' +
         escapeHtml(t.label) + '<span class="count">' + (counts[t.key] || 0) + '</span>';
       btn.addEventListener('click', function () { activeTab = t.key; render(); });
       tabsEl.appendChild(btn);
