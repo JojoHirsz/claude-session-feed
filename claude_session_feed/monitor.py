@@ -32,6 +32,8 @@ MAX_BLOCKS = 1500
 BODY_MAX = 400
 SHOW_THINKING = False
 SUBAGENT_STALE_S = 120
+MAX_SUBAGENTS_PER_SESSION = 5
+SUBAGENT_DONE_KEEP_S = 600
 ENDED_SESSION_KEEP_DAYS = 7
 
 _LOG_DIR = Path(os.environ.get("LOCALAPPDATA", str(Path.home()))) / "ClaudeSessionFeed"
@@ -369,6 +371,7 @@ class Monitor:
                             self._classify_sub(session, sub, obj)
                         except Exception:
                             log.exception("classify_sub failed for %s/%s", session.id, sub.agent_id)
+                self._prune_subagents(session)
             self._mark_stale()
 
     _CATEGORY_PRIORITY = {"active": 0, "error": 1, "waiting": 2, "inactive": 3}
@@ -534,6 +537,19 @@ class Monitor:
                     if sub.block_id:
                         self._update_block(sub.block_id, state="stale",
                                             body=f"no activity for {int(now - sub.last_ts)}s")
+
+    def _prune_subagents(self, session: Session) -> None:
+        """Caps the per-session subagent list so a long-running session with many
+        spawned subagents doesn't accumulate an ever-growing list in the UI."""
+        now = time.time()
+        for agent_id, sub in list(session.subagents.items()):
+            if sub.state in ("done", "stale") and sub.last_ts and now - sub.last_ts > SUBAGENT_DONE_KEEP_S:
+                del session.subagents[agent_id]
+        overflow = len(session.subagents) - MAX_SUBAGENTS_PER_SESSION
+        if overflow > 0:
+            oldest = sorted(session.subagents.values(), key=lambda s: s.last_ts)[:overflow]
+            for sub in oldest:
+                del session.subagents[sub.agent_id]
 
     # -- classification -----------------------------------------------------
 

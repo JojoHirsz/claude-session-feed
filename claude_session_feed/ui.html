@@ -201,7 +201,7 @@
     const subs = session.subagents || [];
     if (!subs.length) return '';
     const running = subs.filter(function (s) { return s.state === 'running'; }).length;
-    const rows = subs.slice(0, 8).map(function (s) {
+    const rows = subs.slice(0, 5).map(function (s) {
       return '<div class="sub-row state-' + escapeHtml(s.state) + '">' +
         '<span class="dot"></span>' +
         '<span class="sub-desc">' + escapeHtml(s.description || 'Subagent') + '</span>' +

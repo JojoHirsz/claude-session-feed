@@ -10,7 +10,11 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent))
 
-from claude_session_feed.monitor import Monitor, Session, Tailer, pid_alive  # noqa: E402
+import time
+
+from claude_session_feed.monitor import (  # noqa: E402
+    MAX_SUBAGENTS_PER_SESSION, SUBAGENT_DONE_KEEP_S, Monitor, Session, Subagent, Tailer, pid_alive,
+)
 
 
 def make_lines():
@@ -112,5 +116,29 @@ def run():
     print(f"OK - {len(blocks)} blocks, {sum(session.unknown_types.values())} unknown line(s)")
 
 
+def run_prune_subagents():
+    monitor = Monitor()
+    session = Session(id="s1", cwd="C:\\proj")
+    now = time.time()
+
+    # count cap: 8 subagents, oldest last_ts first -> only the 5 newest survive
+    for i in range(8):
+        session.subagents[f"a{i}"] = Subagent(agent_id=f"a{i}", state="running", last_ts=now - (8 - i))
+    monitor._prune_subagents(session)
+    assert len(session.subagents) == MAX_SUBAGENTS_PER_SESSION, session.subagents
+    assert set(session.subagents) == {"a3", "a4", "a5", "a6", "a7"}, session.subagents
+
+    # time-based expiry: done/stale older than SUBAGENT_DONE_KEEP_S disappear, newer stay
+    session2 = Session(id="s2", cwd="C:\\proj")
+    session2.subagents["old"] = Subagent(agent_id="old", state="done", last_ts=now - SUBAGENT_DONE_KEEP_S - 100)
+    session2.subagents["recent"] = Subagent(agent_id="recent", state="done", last_ts=now - 300)
+    session2.subagents["running"] = Subagent(agent_id="running", state="running", last_ts=now)
+    monitor._prune_subagents(session2)
+    assert set(session2.subagents) == {"recent", "running"}, session2.subagents
+
+    print("OK - prune_subagents: count cap and time expiry both hold")
+
+
 if __name__ == "__main__":
     run()
+    run_prune_subagents()
