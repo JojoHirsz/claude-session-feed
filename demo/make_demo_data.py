@@ -18,17 +18,31 @@ FEATURES = [
     "Live-Feed laufender Claude-Code-Sitzungen, Status kommt aus Claude Codes eigener Prozess-Registry statt geraten zu werden.",
     "Filterleiste All/Active/Waiting/Error/Inactive: die Punkte leuchten in Farbe nur, wenn in der Kategorie auch etwas liegt.",
     "Doppelklick auf eine Sitzungskarte springt direkt zum echten Terminalfenster dieser Sitzung.",
-    "Subagenten-Tracking je Sitzung: hoechstens 5 gleichzeitig sichtbar, fertige verschwinden automatisch nach 10 Minuten.",
-    "Immer-im-Vordergrund-Pin, haelt auch ueber Minimieren und Maximieren hinweg.",
-    "Hell/Dunkel folgt automatisch dem Windows-Systemthema oder laesst sich von Hand umstellen.",
-    "Fenster dockt rechts am Bildschirmrand an und laesst sich in der Breite frei ziehen.",
+    "Subagenten-Tracking je Sitzung: höchstens 5 gleichzeitig sichtbar, fertige verschwinden automatisch nach 10 Minuten.",
+    "Immer-im-Vordergrund-Pin, hält auch über Minimieren und Maximieren hinweg.",
+    "Hell/Dunkel folgt automatisch dem Windows-Systemthema oder lässt sich von Hand umstellen.",
+    "Fenster dockt rechts am Bildschirmrand an und lässt sich in der Breite frei ziehen.",
     "Token-, Kosten- und Modellanzeige je Sitzung in Echtzeit.",
+]
+
+# Eigenständiger Abschlusssatz je Feature für die Fertigmeldung - bewusst KEIN
+# Ausschnitt/keine Kürzung von FEATURES[i], sonst entsteht in der Aktivitätszeile
+# "Titel — Titel..." (genau der Dopplungsfehler, den Lukas gefunden hat).
+DONE_SUMMARIES = [
+    "Feed lief im Test stabil über mehrere Sitzungswechsel.",
+    "Farbabgleich gegen leere und belegte Kategorien geprüft.",
+    "Sprung zum Terminalfenster in drei Anläufen verifiziert.",
+    "Deckel und Ablauffrist mit echten Zeitstempeln getestet.",
+    "Pin hält jetzt auch nach Minimieren/Maximieren-Zyklen.",
+    "Theme-Wechsel folgt dem Systemwert und der Handumstellung.",
+    "Breite lässt sich ziehen, Dock-Kante bleibt dabei fix.",
+    "Zahlen aktualisieren sich jeden Poll-Zyklus ohne Ruckeln.",
 ]
 
 # (session label, cwd, status, prompt, [(feature_index, state), ...])
 SESSIONS = [
     ("Landing page redesign", r"C:\Demo\landing-page", "busy",
-     "Bau mir eine neue Startseite mit hellerem Header.",
+     "Kannst du dir das kurz ansehen?",
      [(0, "done"), (1, "done"), (2, "running")]),
     ("API refactor", r"C:\Demo\billing-api", "idle",
      "Teile den Billing-Endpunkt in kleinere Handler auf.",
@@ -74,6 +88,7 @@ def build(demo_dir: Path, pid: int) -> None:
             agent_id = uuid.uuid4().hex[:17]
             tool_use_id = "toolu_demo_" + uuid.uuid4().hex[:20]
             description = FEATURES[feature_index]
+            summary = DONE_SUMMARIES[feature_index]
 
             _write(transcript, {
                 "type": "assistant", "timestamp": now_iso,
@@ -94,7 +109,7 @@ def build(demo_dir: Path, pid: int) -> None:
             sub_dir = project_dir / session_id / "subagents"
             _write(sub_dir / f"agent-{agent_id}.jsonl", {
                 "type": "assistant", "timestamp": now_iso,
-                "message": {"content": [{"type": "text", "text": description}]},
+                "message": {"content": [{"type": "text", "text": summary}]},
             })
             (sub_dir / f"agent-{agent_id}.meta.json").write_text(
                 json.dumps({
@@ -110,7 +125,7 @@ def build(demo_dir: Path, pid: int) -> None:
                     f"<task-id>{agent_id}</task-id>\n"
                     f"<tool-use-id>{tool_use_id}</tool-use-id>\n"
                     "<status>completed</status>\n"
-                    f"<summary>{description[:60]}</summary>\n"
+                    f"<summary>{summary}</summary>\n"
                     "</task-notification>"
                 )
                 _write(transcript, {
