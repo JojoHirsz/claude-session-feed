@@ -228,6 +228,7 @@ class Session:
     unknown_types: Counter = field(default_factory=Counter)
     seen_notifications: set = field(default_factory=set)
     done_agent_ids: set = field(default_factory=set)
+    pruned_agent_ids: set = field(default_factory=set)
     ended_at: Optional[float] = None
     activity: str = "Started"
     activity_state: str = "active"  # active | waiting | error | idle
@@ -501,7 +502,7 @@ class Monitor:
             return
         for f in agents_dir.glob("agent-*.jsonl"):
             agent_id = f.stem[len("agent-"):]
-            if agent_id in session.subagents:
+            if agent_id in session.subagents or agent_id in session.pruned_agent_ids:
                 continue
             meta_path = f.with_suffix("").with_suffix(".meta.json")
             meta = {}
@@ -547,11 +548,13 @@ class Monitor:
         for agent_id, sub in list(session.subagents.items()):
             if sub.state in ("done", "stale") and sub.last_ts and now - sub.last_ts > SUBAGENT_DONE_KEEP_S:
                 del session.subagents[agent_id]
+                session.pruned_agent_ids.add(agent_id)
         overflow = len(session.subagents) - MAX_SUBAGENTS_PER_SESSION
         if overflow > 0:
             oldest = sorted(session.subagents.values(), key=lambda s: s.last_ts)[:overflow]
             for sub in oldest:
                 del session.subagents[sub.agent_id]
+                session.pruned_agent_ids.add(sub.agent_id)
 
     # -- classification -----------------------------------------------------
 

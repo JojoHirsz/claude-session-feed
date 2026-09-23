@@ -176,6 +176,40 @@ def run_scan_subagents_revives_done():
     print("OK - scan_subagents: evicted-then-rediscovered agent stays done")
 
 
+def run_scan_subagents_pruned_stays_gone():
+    # Eviction must be a one-way trip: re-globbing agent-*.jsonl on the next discovery
+    # cycle (every ~2.1s) used to resurrect a pruned agent as a fresh entry, bumping its
+    # last_ts to "now" and making _prune_subagents() evict a DIFFERENT one next cycle
+    # instead -- a carousel of subagents cycling in and out of the 5-slot list.
+    monitor = Monitor()
+    with tempfile.TemporaryDirectory() as td:
+        root = Path(td)
+        session_id = "s1"
+        transcript = root / f"{session_id}.jsonl"
+        transcript.write_text("", encoding="utf-8")
+        agents_dir = root / session_id / "subagents"
+        agents_dir.mkdir(parents=True)
+        (agents_dir / "agent-x1.jsonl").write_text("", encoding="utf-8")
+        (agents_dir / "agent-x1.meta.json").write_text(
+            json.dumps({"toolUseId": "tu1", "description": "d", "agentType": "fork"}), encoding="utf-8"
+        )
+
+        session = Session(id=session_id, cwd="C:\\proj", tailer=Tailer(transcript))
+        monitor._scan_subagents(session)
+        assert "x1" in session.subagents
+
+        # pruned (count or time cap) -> marked as pruned, same as _prune_subagents() does
+        del session.subagents["x1"]
+        session.pruned_agent_ids.add("x1")
+
+        # its file is still on disk; repeated discovery must not bring it back
+        for _ in range(5):
+            monitor._scan_subagents(session)
+        assert "x1" not in session.subagents, session.subagents
+
+    print("OK - scan_subagents: pruned agent stays gone across repeated discovery")
+
+
 def run_parse_task_notification():
     # Real transcripts put a newline between </task-id> and <tool-use-id>; a bug here left
     # tool_use_id permanently None, which silently broke matching the subagent back to its
@@ -201,4 +235,5 @@ if __name__ == "__main__":
     run()
     run_prune_subagents()
     run_scan_subagents_revives_done()
+    run_scan_subagents_pruned_stays_gone()
     run_parse_task_notification()
