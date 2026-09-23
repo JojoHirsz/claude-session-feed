@@ -280,7 +280,7 @@ class Session:
 
 
 _TASK_NOTIF_RE = re.compile(
-    r"<task-id>(?P<task_id>\w+)</task-id>"
+    r"<task-id>(?P<task_id>\w+)</task-id>\s*"
     r"(?:<tool-use-id>(?P<tool_use_id>[\w-]+)</tool-use-id>)?"
     r".*?<status>(?P<status>\w+)</status>"
     r".*?<summary>(?P<summary>.*?)</summary>",

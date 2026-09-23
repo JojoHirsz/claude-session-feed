@@ -14,6 +14,7 @@ import time
 
 from claude_session_feed.monitor import (  # noqa: E402
     MAX_SUBAGENTS_PER_SESSION, SUBAGENT_DONE_KEEP_S, Monitor, Session, Subagent, Tailer, pid_alive,
+    parse_task_notification,
 )
 
 
@@ -139,6 +140,28 @@ def run_prune_subagents():
     print("OK - prune_subagents: count cap and time expiry both hold")
 
 
+def run_parse_task_notification():
+    # Real transcripts put a newline between </task-id> and <tool-use-id>; a bug here left
+    # tool_use_id permanently None, which silently broke matching the subagent back to its
+    # block, so it never left "running" state.
+    text = (
+        "<task-notification>\n"
+        "<task-id>abc123</task-id>\n"
+        "<tool-use-id>toolu_xyz</tool-use-id>\n"
+        "<output-file>C:\\out.txt</output-file>\n"
+        "<status>completed</status>\n"
+        "<summary>done</summary>\n"
+        "</task-notification>"
+    )
+    info = parse_task_notification(text)
+    assert info["task_id"] == "abc123", info
+    assert info["tool_use_id"] == "toolu_xyz", info
+    assert info["status"] == "completed", info
+
+    print("OK - parse_task_notification: tool_use_id survives the newline")
+
+
 if __name__ == "__main__":
     run()
     run_prune_subagents()
+    run_parse_task_notification()
