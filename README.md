@@ -5,6 +5,14 @@ A narrow, always-on-top desktop widget for Windows that shows what your running
 tool calls, subagents, questions waiting on you, tokens left — as a live vertical feed,
 one card per event.
 
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="assets/screenshot-dark.png">
+    <source media="(prefers-color-scheme: light)" srcset="assets/screenshot-light.png">
+    <img src="assets/screenshot-light.png" alt="AI Session Buddy showing a live feed of Claude Code session cards with status, filters, and subagent tracking" width="380">
+  </picture>
+</p>
+
 It reads only local, already-on-disk state that Claude Code itself writes: the live
 process registry (`~/.claude/sessions/*.json`) and the session transcripts
 (`~/.claude/projects/*/*.jsonl`, including subagent transcripts). Nothing is sent
