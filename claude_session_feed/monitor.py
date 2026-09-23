@@ -227,6 +227,7 @@ class Session:
     subagents_by_tool: dict = field(default_factory=dict)
     unknown_types: Counter = field(default_factory=Counter)
     seen_notifications: set = field(default_factory=set)
+    done_agent_ids: set = field(default_factory=set)
     ended_at: Optional[float] = None
     activity: str = "Started"
     activity_state: str = "active"  # active | waiting | error | idle
@@ -517,6 +518,7 @@ class Monitor:
                 model=meta.get("model", ""),
                 tailer=Tailer(f),
                 last_ts=time.time(),
+                state="done" if agent_id in session.done_agent_ids else "running",
             )
             session.subagents[agent_id] = sub
             block_id = session.subagents_by_tool.get(sub.tool_use_id)
@@ -631,6 +633,7 @@ class Monitor:
         sub = session.subagents.get(agent_id) if agent_id else None
         if sub and sub.block_id:
             sub.state = "done"
+            session.done_agent_ids.add(sub.agent_id)
             self._update_block(sub.block_id, state="done", body=body)
         else:
             self._add_block(session.id, "subagent", "Subagent report", body, state="done")
@@ -783,6 +786,10 @@ class Monitor:
         if key in session.seen_notifications:
             return
         session.seen_notifications.add(key)
+        # task_id is the agent_id for subagent notifications; mark done permanently, since
+        # eviction from session.subagents (the count/time cap) can later rediscover the same
+        # agent_id as a fresh Subagent, past the point this notification would fire again.
+        session.done_agent_ids.add(task_id)
 
         tool_use_id = info.get("tool_use_id")
         block_id = session.subagents_by_tool.get(tool_use_id) if tool_use_id else None
@@ -798,6 +805,7 @@ class Monitor:
             for sub in session.subagents.values():
                 if sub.block_id == block_id:
                     sub.state = "done"
+                    session.done_agent_ids.add(sub.agent_id)
             self._update_block(block_id, state="done", body=body, meta=meta or None)
         else:
             self._add_block(session.id, "subagent", body or "Subagent finished", state="done", meta=meta)

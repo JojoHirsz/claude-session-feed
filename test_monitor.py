@@ -140,6 +140,42 @@ def run_prune_subagents():
     print("OK - prune_subagents: count cap and time expiry both hold")
 
 
+def run_scan_subagents_revives_done():
+    # A subagent that finished and was later evicted (count/time cap) must come back as
+    # "done", not "running", when _scan_subagents() rediscovers its still-on-disk
+    # agent-*.jsonl on the next cycle -- its <task-notification> already fired once and
+    # won't fire again (session.seen_notifications dedup), so state has to be remembered
+    # per agent_id (session.done_agent_ids), not only on the (evicted) Subagent object.
+    monitor = Monitor()
+    with tempfile.TemporaryDirectory() as td:
+        root = Path(td)
+        session_id = "s1"
+        transcript = root / f"{session_id}.jsonl"
+        transcript.write_text("", encoding="utf-8")
+        agents_dir = root / session_id / "subagents"
+        agents_dir.mkdir(parents=True)
+        (agents_dir / "agent-x1.jsonl").write_text("", encoding="utf-8")
+        (agents_dir / "agent-x1.meta.json").write_text(
+            json.dumps({"toolUseId": "tu1", "description": "d", "agentType": "fork"}), encoding="utf-8"
+        )
+
+        session = Session(id=session_id, cwd="C:\\proj", tailer=Tailer(transcript))
+
+        # first discovery: not done yet -> "running"
+        monitor._scan_subagents(session)
+        assert session.subagents["x1"].state == "running", session.subagents["x1"]
+
+        # notification arrives, then the cap evicts it (simulating _prune_subagents)
+        session.done_agent_ids.add("x1")
+        del session.subagents["x1"]
+
+        # rediscovery must not resurrect it as "running"
+        monitor._scan_subagents(session)
+        assert session.subagents["x1"].state == "done", session.subagents["x1"]
+
+    print("OK - scan_subagents: evicted-then-rediscovered agent stays done")
+
+
 def run_parse_task_notification():
     # Real transcripts put a newline between </task-id> and <tool-use-id>; a bug here left
     # tool_use_id permanently None, which silently broke matching the subagent back to its
@@ -164,4 +200,5 @@ def run_parse_task_notification():
 if __name__ == "__main__":
     run()
     run_prune_subagents()
+    run_scan_subagents_revives_done()
     run_parse_task_notification()
