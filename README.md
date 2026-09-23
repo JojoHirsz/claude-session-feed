@@ -6,7 +6,7 @@ tool calls, subagents, questions waiting on you, tokens left — as a live verti
 one card per event.
 
 <p align="center">
-  <table>
+  <table align="center">
     <tr>
       <td align="center"><img src="assets/screenshot-light.png" width="260" alt="AI Session Buddy in light mode, showing four session cards with live status, filters, and subagent tracking"><br><sub>Light</sub></td>
       <td align="center"><img src="assets/screenshot-dark.png" width="260" alt="AI Session Buddy in dark mode, showing the same live session feed"><br><sub>Dark</sub></td>
