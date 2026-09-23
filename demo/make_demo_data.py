@@ -23,6 +23,7 @@ FEATURES = [
     "Hell/Dunkel folgt automatisch dem Windows-Systemthema oder lässt sich von Hand umstellen.",
     "Fenster dockt rechts am Bildschirmrand an und lässt sich in der Breite frei ziehen.",
     "Token-, Kosten- und Modellanzeige je Sitzung in Echtzeit.",
+    "Findet laufende Sitzungen unabhängig von der Shell, egal ob Git Bash, PowerShell oder normales Windows-Terminal.",
 ]
 
 # Eigenständiger Abschlusssatz je Feature für die Fertigmeldung - bewusst KEIN
@@ -37,6 +38,7 @@ DONE_SUMMARIES = [
     "Theme-Wechsel folgt dem Systemwert und der Handumstellung.",
     "Breite lässt sich ziehen, Dock-Kante bleibt dabei fix.",
     "Zahlen aktualisieren sich jeden Poll-Zyklus ohne Ruckeln.",
+    "Shell-Erkennung mit Git Bash, PowerShell und Windows-Terminal gegengetestet.",
 ]
 
 # (session label, cwd, status, prompt, [(feature_index, state), ...])
@@ -46,7 +48,7 @@ SESSIONS = [
      [(0, "done"), (1, "done"), (2, "running")]),
     ("API refactor", r"C:\Demo\billing-api", "idle",
      "Teile den Billing-Endpunkt in kleinere Handler auf.",
-     [(3, "done"), (4, "running")]),
+     [(3, "done"), (4, "running"), (8, "done")]),
     ("Data migration", r"C:\Demo\warehouse-etl", "busy",
      "Migriere die alte Kundentabelle auf das neue Schema.",
      [(5, "done"), (6, "done"), (7, "done")]),
