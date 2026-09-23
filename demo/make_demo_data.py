@@ -15,44 +15,44 @@ import uuid
 from pathlib import Path
 
 FEATURES = [
-    "Live-Feed laufender Claude-Code-Sitzungen, Status kommt aus Claude Codes eigener Prozess-Registry statt geraten zu werden.",
-    "Filterleiste All/Active/Waiting/Error/Inactive: die Punkte leuchten in Farbe nur, wenn in der Kategorie auch etwas liegt.",
-    "Doppelklick auf eine Sitzungskarte springt direkt zum echten Terminalfenster dieser Sitzung.",
-    "Subagenten-Tracking je Sitzung: höchstens 5 gleichzeitig sichtbar, fertige verschwinden automatisch nach 10 Minuten.",
-    "Immer-im-Vordergrund-Pin, hält auch über Minimieren und Maximieren hinweg.",
-    "Hell/Dunkel folgt automatisch dem Windows-Systemthema oder lässt sich von Hand umstellen.",
-    "Fenster dockt rechts am Bildschirmrand an und lässt sich in der Breite frei ziehen.",
-    "Token-, Kosten- und Modellanzeige je Sitzung in Echtzeit.",
+    "Live feed of running Claude Code sessions - status comes straight from Claude Code's own process registry, never guessed.",
+    "Filter bar All/Active/Waiting/Error/Inactive: the dots only light up in color when a category actually has something in it.",
+    "Double-click a session card to jump straight to that session's real terminal window.",
+    "Per-session subagent tracking: at most 5 visible at once, finished ones drop off automatically after 10 minutes.",
+    "Always-on-top pin, survives minimizing and maximizing.",
+    "Light/dark follows the Windows system theme automatically, or switch it by hand.",
+    "Window docks to the right screen edge and can be freely resized by width.",
+    "Live token, cost, and model display per session.",
 ]
 
-# Eigenständiger Abschlusssatz je Feature für die Fertigmeldung - bewusst KEIN
-# Ausschnitt/keine Kürzung von FEATURES[i], sonst entsteht in der Aktivitätszeile
-# "Titel — Titel..." (genau der Dopplungsfehler, den Lukas gefunden hat).
+# Standalone closing sentence per feature for the done notification - deliberately
+# NOT a slice/truncation of FEATURES[i], or the activity line turns into
+# "Title — Title..." (exactly the duplication bug Lukas found).
 DONE_SUMMARIES = [
-    "Feed lief im Test stabil über mehrere Sitzungswechsel.",
-    "Farbabgleich gegen leere und belegte Kategorien geprüft.",
-    "Sprung zum Terminalfenster in drei Anläufen verifiziert.",
-    "Deckel und Ablauffrist mit echten Zeitstempeln getestet.",
-    "Pin hält jetzt auch nach Minimieren/Maximieren-Zyklen.",
-    "Theme-Wechsel folgt dem Systemwert und der Handumstellung.",
-    "Breite lässt sich ziehen, Dock-Kante bleibt dabei fix.",
-    "Zahlen aktualisieren sich jeden Poll-Zyklus ohne Ruckeln.",
+    "Feed stayed stable across several session switches in testing.",
+    "Color matching checked against empty and populated categories.",
+    "Terminal jump verified across three separate attempts.",
+    "Cap and expiry tested with real timestamps.",
+    "Pin now survives minimize/maximize cycles too.",
+    "Theme switching follows both the system value and the manual override.",
+    "Width is resizable, the dock edge stays fixed.",
+    "Numbers refresh every poll cycle without stutter.",
 ]
 
 # (session label, cwd, status, prompt, [(feature_index, state), ...])
 SESSIONS = [
     ("Landing page redesign", r"C:\Demo\landing-page", "busy",
-     "Kannst du dir das kurz ansehen?",
+     "Can you take a quick look at this?",
      [(0, "done"), (1, "done"), (2, "running")]),
     ("API refactor", r"C:\Demo\billing-api", "idle",
-     "Teile den Billing-Endpunkt in kleinere Handler auf.",
+     "Split the billing endpoint into smaller handlers.",
      [(3, "done"), (4, "running")]),
     ("Data migration", r"C:\Demo\warehouse-etl", "busy",
-     "Migriere die alte Kundentabelle auf das neue Schema.",
+     "Migrate the old customer table to the new schema.",
      [(5, "done"), (6, "done"), (7, "done")]),
     ("Release notes", r"C:\Demo\release-notes", "idle",
-     "Findet laufende Sitzungen unabhängig von der Shell "
-     "- Git Bash, PowerShell oder normales Windows-Terminal, alles wird erkannt.",
+     "Finds running sessions regardless of shell "
+     "- Git Bash, PowerShell, or a plain Windows terminal, all detected.",
      []),
 ]
 
