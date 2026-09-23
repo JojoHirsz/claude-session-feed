@@ -16,6 +16,7 @@ from claude_session_feed.monitor import (  # noqa: E402
     MAX_SUBAGENTS_PER_SESSION, SUBAGENT_DONE_KEEP_S, Monitor, Session, Subagent, Tailer, pid_alive,
     parse_task_notification,
 )
+from claude_session_feed.__main__ import _pick_jump_label  # noqa: E402
 
 
 def make_lines():
@@ -231,9 +232,25 @@ def run_parse_task_notification():
     print("OK - parse_task_notification: tool_use_id survives the newline")
 
 
+def run_pick_jump_label():
+    # /clear keeps the same terminal (same pid) but starts a fresh session id; the old
+    # Session object lingers with status="ended" and its now-stale label. Picking that
+    # one sends _jump_to_pid() searching for a window title Claude Code already
+    # overwrote, silently breaking the double-click jump on the new, active session.
+    old = Session(id="s1", cwd="C:\\proj", pid=111, label="Old Name", status="ended", last_ts=100.0)
+    new = Session(id="s2", cwd="C:\\proj", pid=111, label="New Name", status="busy", last_ts=200.0)
+    sessions = {"s1": old, "s2": new}
+
+    assert _pick_jump_label(sessions.values(), 111) == "New Name", "must prefer the live session"
+    assert _pick_jump_label(sessions.values(), 999) == "", "no match -> empty label"
+
+    print("OK - pick_jump_label: live session wins a pid collision after /clear")
+
+
 if __name__ == "__main__":
     run()
     run_prune_subagents()
     run_scan_subagents_revives_done()
     run_scan_subagents_pruned_stays_gone()
     run_parse_task_notification()
+    run_pick_jump_label()

@@ -269,6 +269,22 @@ def _jump_to_pid(pid: int, label: str = "", own_hwnd: int = 0) -> None:
         _foreground(hwnd)
 
 
+def _pick_jump_label(sessions, pid: int) -> str:
+    """Picks whose label to search for when jumping to a terminal window.
+
+    /clear keeps the same terminal (same pid) but starts a fresh session id;
+    the old Session object lingers with status="ended" until archived. Among
+    sessions sharing a pid, the ended one is stale — prefer a live one, and
+    among ties the most recently updated, so the jump targets the window's
+    current title instead of a name Claude Code has already overwritten.
+    """
+    candidates = [s for s in sessions if s.pid == pid]
+    if not candidates:
+        return ""
+    live = [s for s in candidates if s.status != "ended"]
+    return max(live or candidates, key=lambda s: s.last_ts).label
+
+
 def _light_mode() -> bool:
     """Whether Windows apps are set to light mode (Settings > Colors > Choose your mode)."""
     try:
@@ -323,11 +339,7 @@ class Api:
     def jump_to_session(self, pid: int) -> None:
         try:
             pid = int(pid)
-            label = ""
-            for session in self._monitor.sessions.values():
-                if session.pid == pid:
-                    label = session.label
-                    break
+            label = _pick_jump_label(self._monitor.sessions.values(), pid)
             _jump_to_pid(pid, label, own_hwnd=self._hwnd or 0)
         except Exception:
             logging.getLogger("claude_session_feed").exception("jump_to_session failed for pid %s", pid)
