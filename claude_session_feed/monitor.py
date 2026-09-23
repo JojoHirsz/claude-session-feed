@@ -23,7 +23,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Optional
 
-CLAUDE_DIR = Path.home() / ".claude"
+CLAUDE_DIR = Path(os.environ.get("CLAUDE_SESSION_FEED_DEMO_DIR") or (Path.home() / ".claude"))
 POLL_MS = 700
 DISCOVERY_EVERY_N_TICKS = 3
 TAIL_BYTES = 2_000_000
