@@ -6,11 +6,12 @@ tool calls, subagents, questions waiting on you, tokens left — as a live verti
 one card per event.
 
 <p align="center">
-  <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="assets/screenshot-dark.png">
-    <source media="(prefers-color-scheme: light)" srcset="assets/screenshot-light.png">
-    <img src="assets/screenshot-light.png" alt="AI Session Buddy showing a live feed of Claude Code session cards with status, filters, and subagent tracking" width="380">
-  </picture>
+  <table>
+    <tr>
+      <td align="center"><img src="assets/screenshot-light.png" width="260" alt="AI Session Buddy in light mode, showing four session cards with live status, filters, and subagent tracking"><br><sub>Light</sub></td>
+      <td align="center"><img src="assets/screenshot-dark.png" width="260" alt="AI Session Buddy in dark mode, showing the same live session feed"><br><sub>Dark</sub></td>
+    </tr>
+  </table>
 </p>
 
 It reads only local, already-on-disk state that Claude Code itself writes: the live
