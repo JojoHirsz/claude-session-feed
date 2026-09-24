@@ -230,11 +230,11 @@
   }
 
   // Every field is written through one of these two, and both skip the DOM write when the
-  // value hasn't actually changed. That's the whole flicker fix: earlier versions replaced
-  // a card's full innerHTML on any change, which tears down and rebuilds every child node
-  // (restarting CSS animations, forcing a repaint) even when e.g. only the activity text
-  // changed. A session with active subagents updates almost every poll tick, so that was
-  // visibly flickering constantly. Now only the specific text/markup that changed is touched.
+  // value hasn't actually changed. Replacing a card's full innerHTML on any change tears
+  // down and rebuilds every child node (restarting CSS animations, forcing a repaint) even
+  // when e.g. only the activity text changed. A session with active subagents updates
+  // almost every poll tick, so an unconditional replace flickers constantly; touching only
+  // the specific text/markup that actually changed avoids it.
   function setText(el, text) {
     if (el && el.textContent !== text) el.textContent = text;
   }
@@ -290,11 +290,9 @@
   // card isn't already at the cursor) rather than blindly appendChild-ing every visible
   // card in order — appendChild-ing all N cards every tick physically detaches and
   // reattaches every card except the last one, even when the resulting order is unchanged,
-  // which restarts each card's CSS fade-in animation on every single poll. That unconditional
-  // reattach (confirmed via a MutationObserver + animationstart log: all cards fired
-  // animationstart on every ~700ms tick, even with no content change) was the actual flicker
-  // root cause; the innerHTML/textContent diffing added earlier was necessary but not
-  // sufficient, since it never touched this reordering step.
+  // which restarts each card's CSS fade-in animation on every single poll (confirmed via a
+  // MutationObserver + animationstart log: all cards fired animationstart on every ~700ms
+  // tick, even with no content change).
   function render() {
     renderTabs();
     const visible = activeTab === 'all' ? sessions : sessions.filter(function (s) { return s.category === activeTab; });

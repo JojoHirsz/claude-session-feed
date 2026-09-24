@@ -27,7 +27,7 @@ FEATURES = [
 
 # Standalone closing sentence per feature for the done notification - deliberately
 # NOT a slice/truncation of FEATURES[i], or the activity line turns into
-# "Title — Title..." (exactly the duplication bug Lukas found).
+# "Title — Title...".
 DONE_SUMMARIES = [
     "Feed stayed stable across several session switches in testing.",
     "Color matching checked against empty and populated categories.",
