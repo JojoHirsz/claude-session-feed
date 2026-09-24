@@ -60,7 +60,8 @@ come out the other end — no live session required.
 ## Current scope
 
 - Shows every running Claude Code and Codex CLI session on the machine, not just one project.
-- Ended sessions stay visible for 10 minutes, then drop out of the feed.
+- Ended sessions stay visible under "Inactive" for 7 days, then drop out of the feed. A
+  finished subagent within an active session drops off its card sooner, after 10 minutes.
 - Waiting permission prompts are invisible in the transcript, so a tool card just says
   "running for Ns" without knowing whether it's actually blocked on you.
 
