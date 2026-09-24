@@ -36,7 +36,7 @@ SHOW_THINKING = False
 SUBAGENT_STALE_S = 120
 MAX_SUBAGENTS_PER_SESSION = 5
 SUBAGENT_DONE_KEEP_S = 600
-ENDED_SESSION_KEEP_DAYS = 7
+ENDED_SESSION_KEEP_S = 30 * 60
 
 _LOG_DIR = Path(os.environ.get("LOCALAPPDATA", str(Path.home()))) / "ClaudeSessionFeed"
 _LOG_DIR.mkdir(parents=True, exist_ok=True)
@@ -240,7 +240,7 @@ class Session:
     def category(self) -> str:
         """Coarse bucket the UI filters by.
 
-        'inactive' is reserved for the 7-day archive (process gone). A session whose
+        'inactive' is reserved for the 30-minute archive (process gone). A session whose
         process is alive but whose turn has finished is always, definitionally, waiting
         on the human — Claude Code never does anything between turns on its own, and a
         turn frequently ends with a plain-text question that isn't a structured
@@ -526,7 +526,7 @@ class Monitor:
                 session.status = "ended"
                 session.ended_at = now
                 self._add_block(session_id, "session_end", "Session ended")
-            elif session.ended_at and now - session.ended_at > ENDED_SESSION_KEEP_DAYS * 86400:
+            elif session.ended_at and now - session.ended_at > ENDED_SESSION_KEEP_S:
                 del self.sessions[session_id]
 
     def _discover_codex(self) -> None:
@@ -565,7 +565,7 @@ class Monitor:
                 session.status = "ended"
                 session.ended_at = now
                 self._add_block(session_id, "session_end", "Session ended")
-            elif session.ended_at and now - session.ended_at > ENDED_SESSION_KEEP_DAYS * 86400:
+            elif session.ended_at and now - session.ended_at > ENDED_SESSION_KEEP_S:
                 del self.sessions[session_id]
 
     def _scan_subagents(self, session: Session) -> None:
