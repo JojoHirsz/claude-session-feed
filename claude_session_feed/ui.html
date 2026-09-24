@@ -273,7 +273,8 @@
     if (card.className !== className) card.className = className;
 
     let meta = '';
-    if (s.model_name) meta += s.model_name;
+    if (s.source === 'codex') meta += 'Codex';
+    if (s.model_name) meta += (meta ? ' · ' : '') + s.model_name;
     if (s.tokens_left != null) meta += (meta ? ' · ' : '') + fmtTokens(s.tokens_left);
 
     setText(card.querySelector('.agent-label'), s.label);

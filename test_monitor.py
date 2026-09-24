@@ -26,6 +26,8 @@ def make_lines():
         json.dumps({"type": "assistant", "cwd": "C:\\proj", "timestamp": "2026-09-18T10:00:01Z",
                     "isSidechain": False,
                     "message": {"model": "claude-sonnet-5", "stop_reason": "tool_use",
+                                "usage": {"input_tokens": 50000, "cache_read_input_tokens": 100000,
+                                          "cache_creation_input_tokens": 0},
                                 "content": [{"type": "tool_use", "id": "toolu_1", "name": "Bash",
                                              "input": {"command": "echo hi", "description": "Test"}}]}}),
         json.dumps({"type": "user", "cwd": "C:\\proj", "timestamp": "2026-09-18T10:00:02Z",
@@ -95,7 +97,11 @@ def run():
     subagent_blocks = [b for b in blocks if b.kind == "subagent"]
     assert any(b.state == "done" and b.meta.get("tokens") == 100221 for b in subagent_blocks), subagent_blocks
     assert any(b.kind == "question" and b.state == "answered" for b in blocks), kinds
-    assert session.tokens_left == 14912201
+    # tokens_left comes from context_tokens + the model's known context window now, not
+    # the <total_tokens> reminder above (kept in make_lines() to prove it's ignored):
+    # claude-sonnet-5 is 1M, usage summed to 150000 used -> 850000 left.
+    assert session.context_tokens == 150000, session.context_tokens
+    assert session.tokens_left == 1_000_000 - 150000, session.tokens_left
     assert session.unknown_types.get("future_thing") == 1, session.unknown_types
     # turn_duration is the last real event, and nothing waiting/erroring came after
     # the answered question, so the one-card-per-session summary should read idle —
@@ -232,6 +238,68 @@ def run_parse_task_notification():
     print("OK - parse_task_notification: tool_use_id survives the newline")
 
 
+def run_classify_codex_token_count():
+    # Codex's token_count event carries two different counters (see monitor.py's comment
+    # at the call site) -- this locks in that tokens_left/context_tokens come from
+    # last_token_usage (current, bounded) and NOT total_token_usage (lifetime, unbounded,
+    # would make tokens_left go negative and stay there for the rest of a long session).
+    monitor = Monitor()
+    session = Session(id="c1", cwd="C:\\proj", source="codex")
+    monitor.sessions["c1"] = session
+
+    event = {"type": "event_msg", "payload": {"type": "token_count", "info": {
+        "total_token_usage": {"total_tokens": 880344},  # lifetime-cumulative, must be ignored
+        "last_token_usage": {"total_tokens": 55710},    # current turn's context size
+        "model_context_window": 258400,
+    }}}
+    monitor._classify_codex(session, event)
+    assert session.context_tokens == 55710, session.context_tokens
+    assert session.tokens_left == 258400 - 55710, session.tokens_left
+
+    # missing model_context_window (unknown model/future format) -> no invented number
+    session2 = Session(id="c2", cwd="C:\\proj", source="codex")
+    monitor._classify_codex(session2, {"type": "event_msg", "payload": {"type": "token_count", "info": {
+        "last_token_usage": {"total_tokens": 100},
+    }}})
+    assert session2.context_tokens == 100, session2.context_tokens
+    assert session2.tokens_left is None, session2.tokens_left
+
+    print("OK - classify_codex token_count: tokens_left from the window, not the lifetime total")
+
+
+def run_classify_claude_tokens_left():
+    # Mirrors run_classify_codex_token_count() for the Claude Code side: tokens_left must
+    # come from context_tokens (real per-turn usage) plus the model's known context window
+    # (CLAUDE_CONTEXT_WINDOWS), not the old <total_tokens> session-quota reminder.
+    from claude_session_feed.monitor import CLAUDE_CONTEXT_WINDOWS  # noqa: E402
+
+    monitor = Monitor()
+    session = Session(id="s1", cwd="C:\\proj")
+    monitor.sessions["s1"] = session
+
+    assistant_msg = {"type": "assistant", "isSidechain": False, "message": {
+        "model": "claude-sonnet-5",
+        "usage": {"input_tokens": 50000, "cache_read_input_tokens": 100000,
+                   "cache_creation_input_tokens": 0},
+        "content": [{"type": "text", "text": "hi"}],
+    }}
+    monitor._classify(session, assistant_msg)
+    assert session.context_tokens == 150000, session.context_tokens
+    assert session.tokens_left == CLAUDE_CONTEXT_WINDOWS["claude-sonnet-5"] - 150000, session.tokens_left
+
+    # unknown model (not in the researched table) -> tokens_left is None, never a guess
+    session2 = Session(id="s2", cwd="C:\\proj")
+    monitor._classify(session2, {"type": "assistant", "isSidechain": False, "message": {
+        "model": "claude-nonexistent-9",
+        "usage": {"input_tokens": 10, "cache_read_input_tokens": 0, "cache_creation_input_tokens": 0},
+        "content": [],
+    }})
+    assert session2.context_tokens == 10, session2.context_tokens
+    assert session2.tokens_left is None, session2.tokens_left
+
+    print("OK - classify_assistant tokens_left: known model uses its window, unknown model stays None")
+
+
 def run_pick_jump_label():
     # /clear keeps the same terminal (same pid) but starts a fresh session id; the old
     # Session object lingers with status="ended" and its now-stale label. Picking that
@@ -253,4 +321,6 @@ if __name__ == "__main__":
     run_scan_subagents_revives_done()
     run_scan_subagents_pruned_stays_gone()
     run_parse_task_notification()
+    run_classify_codex_token_count()
+    run_classify_claude_tokens_left()
     run_pick_jump_label()

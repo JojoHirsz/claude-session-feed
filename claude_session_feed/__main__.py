@@ -215,40 +215,22 @@ def _foreground(hwnd: int) -> None:
     user32.AttachThreadInput(cur_thread, fg_thread, False)
 
 
-def _jump_to_pid(pid: int, label: str = "", own_hwnd: int = 0) -> None:
-    """Brings the terminal window hosting a Claude Code process to the foreground.
+def _jump_to_process_tree(pid: int) -> None:
+    """Finds a window for `pid` with no title involved at all: walks up the process
+    ancestry for the first visible top-level window, then falls back to
+    AttachConsole for a classic console. Used when title matching isn't available
+    or came up empty -- e.g. an unlabeled Codex session (no fixed placeholder title
+    the way Claude Code has "Claude Code"), see jump_to_session.
 
-    The pid from the session registry is the CLI process itself, which has no window
-    of its own. In rough order of reliability:
-    - Claude Code sets the terminal's title to the session's own AI-generated label
-      (confirmed live: a session named "ERNTER" shows up as a window titled
-      "✳ ERNTER"). If we know the label, matching the window title directly skips
-      process-tree guessing entirely and is exact.
-    - Before naming happens, Claude Code sets the same title to the literal
-      placeholder "Claude Code" instead (confirmed live: a freshly opened, still
-      unnamed session shows up as "✳ Claude Code"). Try that when there's no label
-      yet. Ambiguous if more than one session is unnamed at once — picks whichever
-      matching window EnumWindows finds first.
-    - Walk up the process tree to the first ancestor that owns a visible top-level
-      window (covers GUI terminal emulators like Git Bash's mintty, which has no
-      real Win32 console at all). NOTE: confirmed unreliable in practice — the
-      intermediate ancestor between a Git-Bash-spawned process and mintty.exe is
-      commonly already dead by the time we look (Windows' ParentProcessID is a
-      creation-time snapshot, not a maintained live link), which silently breaks
-      this walk. Kept only as a fallback for setups where it does hold.
-    - AttachConsole for classic consoles (cmd.exe/PowerShell in conhost). Also
-      confirmed to find a real but *hidden* console window when the actual terminal
-      is mintty (Windows auto-allocates one for native console-subsystem children
-      like node.exe even under a pty-less Cygwin shell) — foregrounding it is a
-      silent no-op the user never sees, which is why this must not be tried first.
+    NOTE: confirmed unreliable in practice, same as documented in _jump_to_pid
+    below — the intermediate ancestor between a shell and its real terminal window
+    is commonly already dead by the time we look (Windows' ParentProcessID is a
+    creation-time snapshot, not a maintained live link), and AttachConsole can find
+    a real but *hidden* console (Windows auto-allocates one for native
+    console-subsystem children even under a pty-less shell) whose foregrounding is
+    a silent no-op. Kept as the best available signal, not a guaranteed jump.
     """
     kernel32 = ctypes.windll.kernel32
-
-    hwnd = (_window_by_title_substring(label, own_hwnd) if label
-            else _window_by_title_substring("Claude Code", own_hwnd))
-    if hwnd:
-        _foreground(hwnd)
-        return
 
     parents = _process_parents()
     walk_pid, seen = pid, set()
@@ -269,8 +251,34 @@ def _jump_to_pid(pid: int, label: str = "", own_hwnd: int = 0) -> None:
         _foreground(hwnd)
 
 
-def _pick_jump_label(sessions, pid: int) -> str:
-    """Picks whose label to search for when jumping to a terminal window.
+def _jump_to_pid(pid: int, label: str = "", own_hwnd: int = 0) -> None:
+    """Brings the terminal window hosting a Claude Code process to the foreground.
+
+    The pid from the session registry is the CLI process itself, which has no window
+    of its own. In rough order of reliability:
+    - Claude Code sets the terminal's title to the session's own AI-generated label
+      (confirmed live: a session named "ERNTER" shows up as a window titled
+      "✳ ERNTER"). If we know the label, matching the window title directly skips
+      process-tree guessing entirely and is exact.
+    - Before naming happens, Claude Code sets the same title to the literal
+      placeholder "Claude Code" instead (confirmed live: a freshly opened, still
+      unnamed session shows up as "✳ Claude Code"). Try that when there's no label
+      yet. Ambiguous if more than one session is unnamed at once — picks whichever
+      matching window EnumWindows finds first.
+    - Otherwise fall back to _jump_to_process_tree (ancestor walk, then
+      AttachConsole) — see its own docstring for why that's a best-effort fallback,
+      not a guarantee.
+    """
+    hwnd = (_window_by_title_substring(label, own_hwnd) if label
+            else _window_by_title_substring("Claude Code", own_hwnd))
+    if hwnd:
+        _foreground(hwnd)
+        return
+    _jump_to_process_tree(pid)
+
+
+def _pick_jump_session(sessions, pid: int):
+    """Picks which Session a pid shared by more than one refers to.
 
     /clear keeps the same terminal (same pid) but starts a fresh session id;
     the old Session object lingers with status="ended" until archived. Among
@@ -280,9 +288,14 @@ def _pick_jump_label(sessions, pid: int) -> str:
     """
     candidates = [s for s in sessions if s.pid == pid]
     if not candidates:
-        return ""
+        return None
     live = [s for s in candidates if s.status != "ended"]
-    return max(live or candidates, key=lambda s: s.last_ts).label
+    return max(live or candidates, key=lambda s: s.last_ts)
+
+
+def _pick_jump_label(sessions, pid: int) -> str:
+    session = _pick_jump_session(sessions, pid)
+    return session.label if session else ""
 
 
 def _light_mode() -> bool:
@@ -339,7 +352,23 @@ class Api:
     def jump_to_session(self, pid: int) -> None:
         try:
             pid = int(pid)
-            label = _pick_jump_label(self._monitor.sessions.values(), pid)
+            session = _pick_jump_session(self._monitor.sessions.values(), pid)
+            label = session.label if session else ""
+            if session is not None and session.source == "codex":
+                # Codex never calls the Win32 SetConsoleTitleW API (confirmed
+                # empirically, see codex_monitor.py), but under a pty-hosted
+                # terminal it still sets the window title itself via an ANSI OSC
+                # escape written over the pty -- confirmed live: a session
+                # labeled "Plane morgen" showed up as a Git-Bash/mintty window
+                # titled "Plane morgen | Projects". Unlike Claude Code there is
+                # no fixed placeholder title for an unlabeled session, so only
+                # try this when we actually have a label.
+                hwnd = _window_by_title_substring(label, self._hwnd or 0) if label else 0
+                if hwnd:
+                    _foreground(hwnd)
+                    return
+                _jump_to_process_tree(pid)
+                return
             _jump_to_pid(pid, label, own_hwnd=self._hwnd or 0)
         except Exception:
             logging.getLogger("claude_session_feed").exception("jump_to_session failed for pid %s", pid)

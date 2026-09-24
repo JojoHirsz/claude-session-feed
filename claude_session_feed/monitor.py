@@ -23,6 +23,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Optional
 
+from . import codex_monitor
+
 CLAUDE_DIR = Path(os.environ.get("CLAUDE_SESSION_FEED_DEMO_DIR") or (Path.home() / ".claude"))
 POLL_MS = 700
 DISCOVERY_EVERY_N_TICKS = 3
@@ -233,6 +235,7 @@ class Session:
     activity: str = "Started"
     activity_state: str = "active"  # active | waiting | error | idle
     activity_ts: float = 0.0
+    source: str = "claude"  # "claude" | "codex" -- which CLI this session belongs to
 
     def category(self) -> str:
         """Coarse bucket the UI filters by.
@@ -265,7 +268,7 @@ class Session:
             "model": self.model, "model_name": self.model_name,
             "tokens_left": self.tokens_left, "context_tokens": self.context_tokens,
             "cost_usd": self.cost_usd, "perm_mode": self.perm_mode,
-            "status": self.status, "color_index": self.color_index,
+            "status": self.status, "color_index": self.color_index, "source": self.source,
             "activity": self.activity, "activity_state": self.activity_state,
             "activity_ts": _iso(self.activity_ts) if self.activity_ts else None,
             "category": self.category(),
@@ -294,7 +297,37 @@ _TASK_NUM_RE = {
     "duration_ms": re.compile(r"<duration_ms>(\d+)</duration_ms>"),
 }
 _HANDBACK_RE = re.compile(r'<agent-message from="(\w+)">', re.IGNORECASE)
-_TOTAL_TOKENS_RE = re.compile(r"<total_tokens>(\d+)")
+
+# Context window per Claude model id, as it appears verbatim in a transcript's
+# message.model field (no date suffix -- current Claude API model ids are bare,
+# e.g. "claude-sonnet-5"). Sourced from the claude-api skill's model catalog
+# (python/claude-api's shared/models.md, cached 2026-06-24): every current
+# model is 1M except Haiku 4.5's 200K. Deliberately NOT a guess for models
+# absent here (older dated ids, future ones) -- CLAUDE_CONTEXT_WINDOWS.get()
+# returning None is what makes tokens_left come out None for those, same as
+# Codex's own "unknown model_context_window" case below.
+CLAUDE_CONTEXT_WINDOWS = {
+    "claude-fable-5-1": 1_000_000,
+    "claude-mythos-5-1": 1_000_000,
+    "claude-fable-5": 1_000_000,
+    "claude-mythos-5": 1_000_000,
+    "claude-opus-5-5": 1_000_000,
+    "claude-opus-5": 1_000_000,
+    "claude-opus-4-8": 1_000_000,
+    "claude-opus-4-7": 1_000_000,
+    "claude-opus-4-6": 1_000_000,
+    "claude-sonnet-5": 1_000_000,
+    "claude-sonnet-4-6": 1_000_000,
+    "claude-haiku-4-5": 200_000,
+}
+
+
+def tokens_left(window: Optional[int], used: Optional[int]) -> Optional[int]:
+    """Shared by Claude Code and Codex: how much of a model's context window is
+    still free this turn. None (not a guessed number) when either side is unknown."""
+    if window is None or used is None:
+        return None
+    return max(0, window - used)
 
 
 def parse_task_notification(text: str) -> dict:
@@ -358,11 +391,13 @@ class Monitor:
             self._tick_count += 1
             if self._tick_count % DISCOVERY_EVERY_N_TICKS == 1:
                 self._discover()
+                self._discover_codex()
             for session in list(self.sessions.values()):
+                classify = self._classify_codex if session.source == "codex" else self._classify
                 if session.tailer is not None:
                     for obj in session.tailer.read_new():
                         try:
-                            self._classify(session, obj)
+                            classify(session, obj)
                         except Exception:
                             log.exception("classify failed for session %s", session.id)
                 for sub in list(session.subagents.values()):
@@ -486,6 +521,45 @@ class Monitor:
 
         for session_id, session in list(self.sessions.items()):
             if session_id in registry:
+                continue
+            if session.status != "ended":
+                session.status = "ended"
+                session.ended_at = now
+                self._add_block(session_id, "session_end", "Session ended")
+            elif session.ended_at and now - session.ended_at > ENDED_SESSION_KEEP_DAYS * 86400:
+                del self.sessions[session_id]
+
+    def _discover_codex(self) -> None:
+        """Codex CLI keeps no PID registry (see codex_monitor.py for the empirical
+        trail), so unlike _discover() above, liveness comes from scanning live OS
+        processes directly rather than reading a file Codex wrote for us."""
+        now = time.time()
+        live = {info.pid: info for info in codex_monitor.discover_codex_sessions()}
+        for pid, info in live.items():
+            session_id = f"codex:{pid}"
+            session = self.sessions.get(session_id)
+            # Windows reuses pids; an "ended" entry under this id is a past process,
+            # not this one -- treat a live pid matching a dead entry as brand new
+            # rather than resurrecting its stale label/cwd/status.
+            if session is not None and session.status == "ended":
+                session = None
+            if session is None:
+                session = Session(id=session_id, pid=pid, cwd=info.cwd, label=info.label or "Codex",
+                                   source="codex", started_at=info.started_at,
+                                   color_index=self._next_color, activity_ts=now)
+                self._next_color += 1
+                self.sessions[session_id] = session
+                if info.rollout_path:
+                    session.tailer = Tailer(info.rollout_path, tail_bytes=TAIL_BYTES)
+                self._add_block(session_id, "session_start", "Session started", session.cwd)
+            else:
+                if info.label and info.label != session.label:
+                    session.label = info.label
+                if session.tailer is None and info.rollout_path:
+                    session.tailer = Tailer(info.rollout_path, tail_bytes=TAIL_BYTES)
+
+        for session_id, session in list(self.sessions.items()):
+            if session.source != "codex" or session.pid in live:
                 continue
             if session.status != "ended":
                 session.status = "ended"
@@ -696,6 +770,7 @@ class Monitor:
                 + (usage.get("cache_read_input_tokens") or 0)
                 + (usage.get("cache_creation_input_tokens") or 0)
             )
+            session.tokens_left = tokens_left(CLAUDE_CONTEXT_WINDOWS.get(session.model), session.context_tokens)
 
         content = message.get("content")
         if not isinstance(content, list):
@@ -750,9 +825,7 @@ class Monitor:
         att = obj.get("attachment", {})
         atype = att.get("type")
         if atype == "total_tokens_reminder":
-            m = _TOTAL_TOKENS_RE.search(att.get("text", ""))
-            if m:
-                session.tokens_left = int(m.group(1))
+            pass  # superseded by tokens_left from context_tokens + CLAUDE_CONTEXT_WINDOWS (_classify_assistant)
         elif atype == "model":
             identity = att.get("identity", {})
             name = identity.get("marketingName") or identity.get("modelId")
@@ -815,15 +888,7 @@ class Monitor:
 
     def _classify_sub(self, session: Session, sub: Subagent, obj: dict) -> None:
         sub.last_ts = time.time()
-        typ = obj.get("type")
-        if typ == "attachment":
-            att = obj.get("attachment", {})
-            if att.get("type") == "total_tokens_reminder":
-                m = _TOTAL_TOKENS_RE.search(att.get("text", ""))
-                if m:
-                    session.tokens_left = int(m.group(1))
-            return
-        if typ != "assistant":
+        if obj.get("type") != "assistant":
             return
         content = obj.get("message", {}).get("content")
         if not isinstance(content, list):
@@ -839,3 +904,52 @@ class Monitor:
                 sub.last_activity = cblock.get("text", "")[:80]
         if sub.block_id and sub.state == "running":
             self._update_block(sub.block_id, body=sub.last_activity)
+
+    def _classify_codex(self, session: Session, obj: dict) -> None:
+        """Codex rollout line -> block, mirroring _classify()'s job for Claude Code's
+        transcript format. Only the event shapes actually observed on this machine
+        (see codex_monitor.py's docstring) are handled; anything else is counted,
+        not raised on, same defensive posture as the rest of this file."""
+        if obj.get("type") != "event_msg":
+            return
+        payload = obj.get("payload") or {}
+        ptyp = payload.get("type")
+
+        if ptyp == "task_started":
+            self._add_block(session.id, "prompt", "Turn started")
+        elif ptyp == "item_completed":
+            item = payload.get("item") or {}
+            itype = item.get("type", "")
+            content = item.get("content") or []
+            text = next((c.get("text", "") for c in content
+                         if isinstance(c, dict) and c.get("type") == "Text"), "")
+            if itype == "UserMessage":
+                self._add_block(session.id, "prompt", "Prompt", text)
+            elif itype == "AgentMessage":
+                self._add_block(session.id, "answer", "Answer", text)
+            elif text:
+                self._add_block(session.id, "tool", itype or "Item", text[:120])
+        elif ptyp == "token_count":
+            # payload.info carries two counters plus the model's actual context window --
+            # confirmed empirically against a real rollout (see codex_monitor.py's docstring):
+            # total_token_usage is LIFETIME-cumulative across the whole session (in an 8-hour
+            # session it reached 880k against a 258400-token window -- useless for "how full is
+            # the context"). last_token_usage is the current turn's context size, resets each
+            # turn, stays within the window -- the Codex equivalent of what Claude Code's own
+            # context_tokens already tracks (see _classify_assistant above). model_context_window
+            # is Codex's own live report of the model's limit (258400 for gpt-5.6-terra here),
+            # not a value we have to hardcode per model name.
+            #
+            # tokens_left is the same metric as Claude Code's own (see _classify_assistant):
+            # window - current_usage, via the shared tokens_left() helper -- None when the
+            # window is unknown, never a guessed number.
+            info = payload.get("info") or {}
+            window = info.get("model_context_window")
+            used = (info.get("last_token_usage") or {}).get("total_tokens")
+            if used is not None:
+                session.context_tokens = used
+                session.tokens_left = tokens_left(window, used)
+        elif ptyp == "task_complete":
+            self._add_block(session.id, "turn_end", "Turn ended")
+        else:
+            session.unknown_types[f"event_msg:{ptyp or '?'}"] += 1
