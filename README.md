@@ -63,6 +63,11 @@ come out the other end — no live session required.
 - Waiting permission prompts are invisible in the transcript, so a tool card just says
   "running for Ns" without knowing whether it's actually blocked on you.
 
+## Roadmap
+
+- Ollama support, to cover locally-run agents in general instead of just Claude Code and
+  Codex CLI specifically.
+
 ## License
 
 [MIT](LICENSE)

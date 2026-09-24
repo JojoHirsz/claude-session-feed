@@ -63,10 +63,26 @@
      the pair, standing in for the surface itself — no visible ground plane, just
      the shadow it casts, which is the actual Apple-keynote trick. */
   .puddle {
-    position: absolute; left: -10px; top: 430px; width: 420px; height: 140px;
-    background: radial-gradient(ellipse at center, rgba(28,28,30,.22) 0%, rgba(28,28,30,0) 70%);
-    filter: blur(18px);
+    position: absolute; left: -10px; top: 425px; width: 430px; height: 155px;
+    background: radial-gradient(ellipse at center, rgba(28,28,30,.36) 0%, rgba(28,28,30,0) 72%);
+    filter: blur(20px);
   }
+
+  /* The actual glass-floor cue: a real mirrored copy of each shot's bottom edge,
+     clipped short and faded out fast, as if reflected in a glossy surface right
+     under it rather than just implied by the puddle shadow above. */
+  .reflection {
+    position: absolute; width: 233px; height: 125px; overflow: hidden;
+    border-radius: 0 0 11px 11px;
+    -webkit-mask-image: linear-gradient(to bottom, rgba(0,0,0,.22), transparent 75%);
+            mask-image: linear-gradient(to bottom, rgba(0,0,0,.22), transparent 75%);
+  }
+  .reflection img {
+    display: block; width: 100%; height: auto; transform: scaleY(-1);
+    filter: blur(1.5px);
+  }
+  .reflection.light { right: 20px; top: 507px; }
+  .reflection.dark { right: 235px; top: 582px; }
 
   .shot {
     position: absolute; width: 233px; border-radius: 11px; overflow: hidden;
@@ -104,6 +120,8 @@
 
     <div class="shots">
       <div class="puddle"></div>
+      <div class="reflection dark"><img src="screenshot-dark.png"></div>
+      <div class="reflection light"><img src="screenshot-light.png"></div>
       <div class="shot dark"><div class="clip"><img src="screenshot-dark.png"></div></div>
       <div class="shot light"><div class="clip"><img src="screenshot-light.png"></div></div>
     </div>
