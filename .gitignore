@@ -2,3 +2,7 @@ __pycache__/
 *.pyc
 .venv/
 venv/
+
+# demo/screenshot_demo.py output, regenerated on demand, not the committed assets/ copies
+/demo_screenshot_hell.png
+/demo_screenshot_dunkel.png

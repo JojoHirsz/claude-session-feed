@@ -51,9 +51,10 @@ pythonw -m claude_session_feed
 
 ```
 python test_monitor.py
+python test_codex_monitor.py
 ```
 
-Runs the classifier against a synthetic transcript and asserts the expected blocks
+Runs the classifiers against synthetic transcripts and asserts the expected blocks
 come out the other end — no live session required.
 
 ## Current scope
