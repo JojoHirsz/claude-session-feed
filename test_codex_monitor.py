@@ -175,6 +175,25 @@ def run_filters_internal_codex_binaries():
     print("OK - discover_live_pids: internal ~/.codex helper binaries excluded, real session kept")
 
 
+def run_demo_pid_bypass():
+    # Unset: normal scan path runs, untouched (same assertion as the ctypes smoke test).
+    os.environ.pop("CLAUDE_SESSION_FEED_CODEX_DEMO_PID", None)
+    assert isinstance(codex_monitor.discover_live_pids(), dict)
+
+    # Set: hands back exactly that one pid, skipping the Toolhelp32 scan/path filter --
+    # proven by pointing it at a pid that would never pass the real path filter (0 is not
+    # a real codex.exe process, but the bypass must not care).
+    os.environ["CLAUDE_SESSION_FEED_CODEX_DEMO_PID"] = "4242"
+    try:
+        live = codex_monitor.discover_live_pids()
+        assert set(live) == {4242}, live
+        assert isinstance(live[4242], float)
+    finally:
+        os.environ.pop("CLAUDE_SESSION_FEED_CODEX_DEMO_PID", None)
+
+    print("OK - discover_live_pids: demo pid bypass returns exactly the given pid, unset is a no-op")
+
+
 if __name__ == "__main__":
     run_rollout_epoch_and_find_rollout()
     run_read_session_meta()
@@ -182,3 +201,4 @@ if __name__ == "__main__":
     run_discover_codex_sessions_end_to_end()
     run_ctypes_smoke_against_own_process()
     run_filters_internal_codex_binaries()
+    run_demo_pid_bypass()

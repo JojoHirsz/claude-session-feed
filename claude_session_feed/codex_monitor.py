@@ -155,7 +155,18 @@ def _process_start_epoch(pid: int) -> Optional[float]:
 
 def discover_live_pids() -> dict:
     """pid -> start epoch for every REAL interactive codex CLI process on this
-    machine right now (filtered by executable path, see module docstring)."""
+    machine right now (filtered by executable path, see module docstring).
+
+    CLAUDE_SESSION_FEED_CODEX_DEMO_PID short-circuits this for the demo screenshot
+    script (demo/make_demo_data.py): there is no real codex.exe process to point a
+    Toolhelp32 scan at, so this hands back exactly the one already-alive placeholder
+    pid it's given, with a made-up "just started" epoch, skipping the scan and path
+    filter below entirely. Unset (the normal case) it's a no-op.
+    """
+    demo_pid = os.environ.get("CLAUDE_SESSION_FEED_CODEX_DEMO_PID")
+    if demo_pid:
+        return {int(demo_pid): time.time()}
+
     codex_dir_str = str(CODEX_DIR).lower()
     out = {}
     for pid in _codex_exe_pids():

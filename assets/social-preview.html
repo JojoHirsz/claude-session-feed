@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Social Preview — Light</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #f5f4f2;
+    --bg2: #eeece8;
+    --ink: #1c1c1e;
+    --muted: #6e6e73;
+    --faint: #a3a3a8;
+    --fox: #fd5d01;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body {
+    width: 1280px; height: 640px; overflow: hidden;
+    background: var(--bg);
+    font-family: "Inter", system-ui, sans-serif;
+  }
+  .canvas {
+    position: relative; width: 1280px; height: 640px;
+    background: radial-gradient(1100px 700px at 8% 15%, var(--bg) 0%, var(--bg2) 100%);
+  }
+
+  .brand { position: absolute; left: 48px; top: 42px; display: flex; align-items: center; gap: 11px; }
+  .brand img { height: 34px; width: 34px; display: block; }
+  .brand span {
+    font-family: "Space Grotesk", sans-serif; font-weight: 600; font-size: 17px;
+    letter-spacing: .01em; color: var(--ink);
+  }
+
+  .copy { position: absolute; left: 48px; top: 150px; width: 490px; }
+  .eyebrow {
+    font-family: "Space Grotesk", sans-serif; font-weight: 600; font-size: 13px;
+    letter-spacing: .14em; text-transform: uppercase; color: var(--faint);
+    margin-bottom: 13px;
+  }
+  h1 {
+    font-family: "Space Grotesk", sans-serif; font-weight: 700; font-size: 54px;
+    line-height: 1.02; letter-spacing: -.01em; color: var(--ink);
+    margin-bottom: 15px;
+  }
+  .sub {
+    font-size: 16px; line-height: 1.45; color: var(--muted); max-width: 380px;
+    margin-bottom: 28px;
+  }
+  .features { display: flex; flex-direction: column; gap: 10px; margin-bottom: 27px; }
+  .feature { display: flex; align-items: center; gap: 10px; font-size: 15px; color: var(--ink); }
+  .feature .dot { width: 6px; height: 6px; border-radius: 50%; flex: none; background: var(--faint); }
+
+  .kicker {
+    font-family: "Space Grotesk", sans-serif; font-style: italic; font-weight: 500;
+    font-size: 15px; color: var(--muted);
+  }
+
+  .shots { position: absolute; right: 59px; top: 0; height: 100%; width: 450px; }
+
+  /* The "floating above a surface" cue: one big, very soft, blurred ellipse under
+     the pair, standing in for the surface itself — no visible ground plane, just
+     the shadow it casts, which is the actual Apple-keynote trick. */
+  .puddle {
+    position: absolute; left: -10px; top: 430px; width: 420px; height: 140px;
+    background: radial-gradient(ellipse at center, rgba(28,28,30,.22) 0%, rgba(28,28,30,0) 70%);
+    filter: blur(18px);
+  }
+
+  .shot {
+    position: absolute; width: 233px; border-radius: 11px; overflow: hidden;
+  }
+  .shot .clip { height: 450px; overflow: hidden; }
+  .shot .clip img { display: block; width: 100%; height: auto; }
+  .shot.light {
+    right: 20px; top: 57px;
+    box-shadow: 0 40px 70px -20px rgba(28,28,30,.28), 0 8px 20px -8px rgba(28,28,30,.16), 0 0 0 1px rgba(0,0,0,.04);
+  }
+  .shot.dark {
+    right: 235px; top: 132px;
+    box-shadow: 0 45px 80px -20px rgba(28,28,30,.32), 0 10px 24px -8px rgba(28,28,30,.18), 0 0 0 1px rgba(0,0,0,.06);
+  }
+</style>
+</head>
+<body>
+  <div class="canvas">
+    <div class="brand">
+      <img src="../claude_session_feed/icon.png" alt="">
+      <span>AI SESSION BUDDY</span>
+    </div>
+
+    <div class="copy">
+      <div class="eyebrow">For Claude Code &amp; Codex on Windows</div>
+      <h1>Always<br>in&nbsp;view.</h1>
+      <div class="sub">A narrow, always-on-top widget that shows every running Claude&nbsp;Code or Codex session live &mdash; prompts, subagents, tokens, one card per session.</div>
+      <div class="features">
+        <div class="feature"><span class="dot"></span> Jump to any session's terminal &mdash; one double-click</div>
+        <div class="feature"><span class="dot"></span> Watch subagents work without leaving your flow</div>
+        <div class="feature"><span class="dot"></span> Pinned on top. Light or dark, it follows Windows</div>
+      </div>
+      <div class="kicker">Because Windows deserves nice things too.</div>
+    </div>
+
+    <div class="shots">
+      <div class="puddle"></div>
+      <div class="shot dark"><div class="clip"><img src="screenshot-dark.png"></div></div>
+      <div class="shot light"><div class="clip"><img src="screenshot-light.png"></div></div>
+    </div>
+  </div>
+</body>
+</html>

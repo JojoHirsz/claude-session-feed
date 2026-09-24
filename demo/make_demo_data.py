@@ -138,9 +138,65 @@ def build(demo_dir: Path, pid: int) -> None:
                 })
 
 
+# One Codex CLI session, "busy" (no task_complete yet, so it reads as active rather than
+# idle -- see monitor.py's _classify_codex/_touch_session_activity), with a token_count
+# event so the card's context indicator (model_context_window - last_token_usage, see
+# codex_monitor.py's docstring) is actually visible in the screenshot.
+CODEX_SESSION = (
+    "Refactor auth middleware", r"C:\Demo\auth-service",
+    "Split session refresh out of the login handler into its own module.",
+    "Extracted refresh-token handling into session.rs, updated the three call sites, "
+    "ran the auth test suite -- all green.",
+    258_400,  # model_context_window, as observed live for gpt-5.6-terra (see codex_monitor.py)
+    190_000,  # last_token_usage.total_tokens
+)
+
+
+def build_codex(codex_dir: Path, pid: int) -> None:
+    """Writes one ~/.codex-shaped session (rollout file + session_index.jsonl entry) so
+    discover_codex_sessions() can find it via the CLAUDE_SESSION_FEED_CODEX_DEMO_PID
+    bypass in codex_monitor.discover_live_pids() (no real codex.exe process involved).
+
+    The rollout filename's embedded local timestamp must land within find_rollout()'s
+    30s tolerance of the epoch that bypass hands back (time.time() at call time), so
+    this stamps "now" too -- both this write and the widget's first discovery tick
+    happen within a couple of seconds of each other.
+    """
+    label, cwd, prompt, answer, window, used = CODEX_SESSION
+    session_id = str(uuid.uuid4())
+    now = time.localtime()  # local wall-clock, matching the rollout filename convention
+    stamp = time.strftime("%Y-%m-%dT%H-%M-%S", now)
+    day_dir = codex_dir / "sessions" / time.strftime("%Y", now) / time.strftime("%m", now) / time.strftime("%d", now)
+    rollout = day_dir / f"rollout-{stamp}-{session_id}.jsonl"
+
+    _write(rollout, {"type": "session_meta", "payload": {
+        "session_id": session_id, "cwd": cwd, "originator": "codex-tui",
+    }})
+    _write(rollout, {"type": "event_msg", "payload": {"type": "task_started"}})
+    _write(rollout, {"type": "event_msg", "payload": {
+        "type": "item_completed",
+        "item": {"type": "UserMessage", "content": [{"type": "Text", "text": prompt}]},
+    }})
+    _write(rollout, {"type": "event_msg", "payload": {
+        "type": "item_completed",
+        "item": {"type": "AgentMessage", "content": [{"type": "Text", "text": answer}]},
+    }})
+    _write(rollout, {"type": "event_msg", "payload": {
+        "type": "token_count",
+        "info": {
+            "total_token_usage": {"total_tokens": used + 620_000},  # lifetime-cumulative, not context fill
+            "last_token_usage": {"total_tokens": used},
+            "model_context_window": window,
+        },
+    }})
+
+    _write(codex_dir / "session_index.jsonl", {"id": session_id, "thread_name": label})
+
+
 if __name__ == "__main__":
     if len(sys.argv) != 3:
         print("Usage: python make_demo_data.py <target_dir> <pid>")
         raise SystemExit(2)
     build(Path(sys.argv[1]), int(sys.argv[2]))
+    build_codex(Path(sys.argv[1]) / "codex_home", int(sys.argv[2]))
     print("demo data written to", sys.argv[1])
